@@ -152,20 +152,15 @@ def lsh(signature_matrix : np.ndarray, n_bands : int, similarity_function, thres
         # With fewer than 2 users in the bucket, there are no candidate pairs
         if len(bucket) < 2:
             continue
+        
+        # Calculate similarity for each pair of users in the bucket
+        pair_similarities = np.fromiter(((similarity_function(signature_matrix[:,bucket[i]], signature_matrix[:,bucket[j]])) for i in range(len(bucket)) for j in range(i+1, len(bucket))), dtype=float).reshape(len(bucket), -1)
 
-        # Generate all possible pairs of users in the bucket
-        for i in range(len(bucket)):
-            user1 = bucket[i]
-            user1_sig = signature_matrix[:,user1]
+        # Find indices of pairs with similarity above the threshold
+        similar_pairs_indices = np.argwhere(pair_similarities > threshold)
 
-            for j in range(i+1, len(bucket)):
-                user2 = bucket[j]
-                user2_sig = signature_matrix[:,user2]
+        similar_users.update((bucket[i], bucket[j]) for i,j in similar_pairs_indices)
 
-                similarity = similarity_function(user1_sig, user2_sig)
-
-                if similarity > threshold:
-                    similar_users.add((user1, user2))
 
     return similar_users
 
