@@ -1,3 +1,4 @@
+import time
 import numpy as np
 from scipy import sparse
 import os
@@ -9,6 +10,7 @@ import argparse
 
 def parse_args():
     argparser = argparse.ArgumentParser()
+    # argparser.add_argument("-d", default="data/user_movie_rating_subset.npy", help="specify data file path")
     argparser.add_argument("-d", default="data/user_movie_rating.npy", help="specify data file path")
     argparser.add_argument("-s", default=42, type=int, help="the random seed to be used")
     argparser.add_argument("-m", choices = ['js','cs','dcs'], help="similarity measure: jacard (js), cosine (cs), discrete cosine (dcs)")
@@ -20,10 +22,7 @@ def load_data(file_path : str):
     # Ratings is a numpy array of shape (n_ratings, 3): [user_id, movie_id, rating]
     ratings_data = np.load(file_path) 
     
-
-
     # Create a column (user) based sparse matrix of shape (n_users, n_movies) from the ratings
-    # TODO: Evaluate coo matrix, csc matrix, csr matrix and lil matrix
     users = ratings_data[:,0]
     movies = ratings_data[:,1]
     ratings = ratings_data[:,2]
@@ -31,7 +30,7 @@ def load_data(file_path : str):
     n_users = np.max(users)
     n_movies = np.max(movies)
     
-    rating_matrix = sparse.csc_matrix((ratings, (users, movies)), shape=(n_users+1, n_movies+1))
+    rating_matrix = sparse.csr_matrix((ratings, (users, movies)), shape=(n_users+1, n_movies+1))
     
     return rating_matrix
 
@@ -55,7 +54,7 @@ def write_result(candidate_pairs : list, file_name : str):
 def hash_function(x : int, a : int, b : int, c : int, n_buckets : int):
     return ((a*x + b) % c) % n_buckets
 
-# Return signature matrix of shape (n_hashes, n_users) for the given rating matrix
+# Takes a rating matrix of shape (n_users, n_movies) and a hash function and returns the minimum hash value for each user
 def minhash(rating_matrix : sparse.csr_matrix, n_hashes : int):
     n_users = rating_matrix.shape[0]
     n_movies = rating_matrix.shape[1]
@@ -72,13 +71,13 @@ def minhash(rating_matrix : sparse.csr_matrix, n_hashes : int):
         # Find indices of movies that the user has rated
         non_zero_indices = rating_matrix[user].nonzero()[1]
 
-        if len(non_zero_indices) == 0: # TODO: check if this is correct -> Is such a user even present or is it error in the coding?
+        if len(non_zero_indices) == 0:
             continue
 
         # Calculate hash value for each hash function for each movie that the user has rated and keep the minimum hash value
         minhash_values = np.array([min(hash_function(non_zero_indices,hash_functions[i][0],hash_functions[i][1],hash_functions[i][2],n_movies)) for i in range(n_hashes)])
         # Update signature matrix
-        signature_matrix[:,user-1] = np.minimum(minhash_values, signature_matrix[:,user-1])
+        signature_matrix[:,user] = np.minimum(minhash_values, signature_matrix[:,user])
 
     return signature_matrix
 
@@ -112,53 +111,64 @@ def discrete_cosine_similarity(x : np.ndarray, y : np.ndarray):
 #   - jaccard_similarity > 0.5
 #   - cosine_similarity > 0.73
 #   - discrete_cosine_similarity > 0.73
-def lsh(rating_matrix, signature_matrix : np.ndarray, n_bands : int, n_buckets : int, similarity_measure : str):
-    n_hashes_sig = signature_matrix.shape[0]
-    n_users = signature_matrix.shape[1]
-    n_rows = int(n_hashes_sig / n_bands)    
+def lsh(signature_matrix : np.ndarray, n_bands : int, similarity_function, threshold: float):
+    n_hashes, n_users = signature_matrix.shape
+    rows_per_band = n_hashes // n_bands    
 
-    # generate hash functions by representing them as the coefficients a,b,c of the hash function h(x,a,b,c,n_buckets)
-    hash_functions = np.random.randint(1,1000,(n_buckets,3))
-    
-    # generate buckets
-    buckets = dict()
+    # Generate hash functions for each band
+    hash_functions = np.random.randint(1,1000,(n_bands,3))
+    n_buckets = n_users // 2
+
+
+    # Initialize a dictionary to store candidate pairs
+    candidate_pairs = {}
+
+    # Apply LSH to find candidate pairs
     for band in range(n_bands):
-        buckets[band] = dict()
+        # Extract a band from the signature matrix
+        band_matrix = signature_matrix[band * rows_per_band: (band + 1) * rows_per_band, :]
 
-    # hash each user's signature into buckets
-    for user in range(n_users):
-        for band in range(n_bands):
-            # extract the corresponding rows for the current band
-            band_signature = signature_matrix[band * n_rows: (band + 1) * n_rows, user]
+        # Collapse the rows of the band into a single row for each user
+        band_value = np.sum(band_matrix, axis=0)
 
-            # compute the hash values for the current band
-            hash_values = np.array([hash_function(band_signature,hash_functions[i][0],hash_functions[i][1],hash_functions[i][2],n_buckets) for i in range(n_buckets)])
+        # Calculate destination bucket for each user in the band
+        hash_values = hash_function(band_value, hash_functions[band][0], hash_functions[band][1], hash_functions[band][2], n_buckets)
 
-            # add the user to the corresponding bucket
-            for hash_value in hash_values:
-                if hash_value not in buckets[band]:
-                    buckets[band][hash_value] = []
-                buckets[band][hash_value].append(user)
-            
-    # find candidate pairs by comparing users by their ratings
-    candidate_pairs = set()
+        # Map each user to its bucket
+        for user in range(n_users):
+            hash_value = hash_values[user]
+            # Check if the hash value already exists in the dictionary
+            if hash_value in candidate_pairs:
+                # If it does, add the current user to the candidate list
+                candidate_pairs[hash_value].append(user)
+            else:
+                # If not, create a new entry in the dictionary
+                candidate_pairs[hash_value] = [user]
 
-    for band in range(n_bands):
-        for bucket in buckets[band].values():
-            if len(bucket) > 1:
-                for i in range(len(bucket)):
-                    for j in range(i+1,len(bucket)):
-                        user1 = bucket[i]
-                        user2 = bucket[j]
-                        if similarity_measure == 'js':
-                            similarity = jaccard_similarity(rating_matrix[user1], rating_matrix[user2])
-                        elif similarity_measure == 'cs':
-                            similarity = cosine_similarity(rating_matrix[user1], rating_matrix[user2])
-                        elif similarity_measure == 'dcs':
-                            similarity = discrete_cosine_similarity(rating_matrix[user1], rating_matrix[user2])
-                        else:
-                            raise Exception("Unknown similarity measure")
-    return candidate_pairs
+    # Iterate through each bucket and find candidate pairs
+    for bucket in candidate_pairs.values():
+        # If there is only one user in the bucket, there are no candidate pairs
+        if len(bucket) < 2:
+            continue
+
+        # Generate all possible pairs of users in the bucket
+        pairs = [(bucket[i], bucket[j]) for i in range(len(bucket)) for j in range(i+1, len(bucket))]
+
+        similar_users = set()
+
+        # Calculate the similarity of each pair
+        for (user1,user2) in pairs:
+            user1_sig = signature_matrix[:,user1]
+            user2_sig = signature_matrix[:,user2]
+            similarity = similarity_function(user1_sig, user2_sig)
+
+            # If the similarity is above the threshold, add the pair to the candidate list
+            if similarity > threshold:
+                similar_users.add((user1, user2))
+
+
+    return similar_users
+
 
 
 def main():
@@ -173,11 +183,24 @@ def main():
     if similarity_measure != 'js' and similarity_measure != 'cs' and similarity_measure != 'dcs':
         raise Exception("Unknown similarity measure")
 
+    if similarity_measure == 'js':
+        similarity_function = jaccard_similarity
+        threshold = 0.5
+    elif similarity_measure == 'cs':
+        similarity_function = cosine_similarity
+        threshold = 0.73
+    elif similarity_measure == 'dcs':
+        similarity_function = discrete_cosine_similarity
+        threshold = 0.73
+
     np.random.seed(seed)
     results_directory = "./results"
     
     # load data
     rating_matrix = load_data(directory)
+
+    # Start timer
+    start = time.time()
 
     # compute minhash
     n_hashes = 100
@@ -185,8 +208,11 @@ def main():
 
     # compute LSH
     n_bands = 20
-    n_buckets = 100
-    candidate_pairs = lsh(rating_matrix, signature_matrix, n_bands, n_buckets, similarity_measure)
+    candidate_pairs = lsh(signature_matrix, n_bands, similarity_function, threshold)
+
+    # Stop timer
+    end = time.time()
+    print("Time elapsed: ", end - start)
 
     # write results to file corresponding to the similarity measure
     write_result(candidate_pairs, similarity_measure+".txt")
