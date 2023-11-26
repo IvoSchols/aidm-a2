@@ -146,26 +146,26 @@ def lsh(signature_matrix : np.ndarray, n_bands : int, similarity_function, thres
                 candidate_pairs[hash_value] = [user]
 
     # Iterate through each bucket and find candidate pairs
+    similar_users = set()
+
     for bucket in candidate_pairs.values():
-        # If there is only one user in the bucket, there are no candidate pairs
+        # With fewer than 2 users in the bucket, there are no candidate pairs
         if len(bucket) < 2:
             continue
 
         # Generate all possible pairs of users in the bucket
-        pairs = [(bucket[i], bucket[j]) for i in range(len(bucket)) for j in range(i+1, len(bucket))]
-
-        similar_users = set()
-
-        # Calculate the similarity of each pair
-        for (user1,user2) in pairs:
+        for i in range(len(bucket)):
+            user1 = bucket[i]
             user1_sig = signature_matrix[:,user1]
-            user2_sig = signature_matrix[:,user2]
-            similarity = similarity_function(user1_sig, user2_sig)
 
-            # If the similarity is above the threshold, add the pair to the candidate list
-            if similarity > threshold:
-                similar_users.add((user1, user2))
+            for j in range(i+1, len(bucket)):
+                user2 = bucket[j]
+                user2_sig = signature_matrix[:,user2]
 
+                similarity = similarity_function(user1_sig, user2_sig)
+
+                if similarity > threshold:
+                    similar_users.add((user1, user2))
 
     return similar_users
 
@@ -194,7 +194,6 @@ def main():
         threshold = 0.73
 
     np.random.seed(seed)
-    results_directory = "./results"
     
     # load data
     rating_matrix = load_data(directory)
@@ -206,9 +205,13 @@ def main():
     n_hashes = 100
     signature_matrix = minhash(rating_matrix, n_hashes)
 
+    del rating_matrix
+
     # compute LSH
     n_bands = 20
     candidate_pairs = lsh(signature_matrix, n_bands, similarity_function, threshold)
+
+    del signature_matrix
 
     # Stop timer
     end = time.time()
