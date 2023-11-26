@@ -1,3 +1,4 @@
+from collections import defaultdict
 import time
 import numpy as np
 from scipy import sparse
@@ -62,22 +63,20 @@ def minhash(rating_matrix : sparse.csr_matrix, n_hashes : int):
     # generate hash functions by representing them as the coefficients a,b,c of the hash function h(x,a,b,c,n_buckets)
     hash_functions = np.random.randint(1,1000,(n_hashes,3))
     
-    # generate signature matrix
+    # Generate signature matrix with all values set to infinity
     signature_matrix = np.full((n_hashes,n_users),np.inf)
 
-    # Update signature matrix for each user in the rating matrix using the hash functions
-    # Start with user 1 and iterate over all users
-    for user in range(n_users):
-        # Find indices of movies that the user has rated
-        non_zero_indices = rating_matrix[user].nonzero()[1]
+    # Find indices of non-zero entries in the rating matrix
+    non_zero_indices = rating_matrix.nonzero()
 
-        if len(non_zero_indices) == 0:
-            continue
+    # Iterate through each hash function and update the signature matrix
+    for i in range(n_hashes):
+        # Calculate hash values for all non-zero entries in the rating matrix
+        hash_values = hash_function(non_zero_indices[1], hash_functions[i][0], hash_functions[i][1],
+                                    hash_functions[i][2], n_movies)
+        
+        np.minimum.at(signature_matrix[i], non_zero_indices[0], hash_values)
 
-        # Calculate hash value for each hash function for each movie that the user has rated and keep the minimum hash value
-        minhash_values = np.array([min(hash_function(non_zero_indices,hash_functions[i][0],hash_functions[i][1],hash_functions[i][2],n_movies)) for i in range(n_hashes)])
-        # Update signature matrix
-        signature_matrix[:,user] = np.minimum(minhash_values, signature_matrix[:,user])
 
     return signature_matrix
 
@@ -121,29 +120,27 @@ def lsh(signature_matrix : np.ndarray, n_bands : int, similarity_function, thres
 
 
     # Initialize a dictionary to store candidate pairs
-    candidate_pairs = {}
+    candidate_pairs = defaultdict(list)
 
     # Apply LSH to find candidate pairs
     for band in range(n_bands):
         # Extract a band from the signature matrix
         band_matrix = signature_matrix[band * rows_per_band: (band + 1) * rows_per_band, :]
 
-        # Collapse the rows of the band into a single row for each user
-        band_value = np.sum(band_matrix, axis=0)
+        # Collapse the rows of the band into a single row for each user and calculate its destination bucket
+        dest_bucket = hash_function(np.sum(band_matrix, axis=0), hash_functions[band][0], hash_functions[band][1], hash_functions[band][2], n_buckets)
 
-        # Calculate destination bucket for each user in the band
-        hash_values = hash_function(band_value, hash_functions[band][0], hash_functions[band][1], hash_functions[band][2], n_buckets)
+        # Find unique buckets and map each user to its bucket
+        buckets, bucket_indices = np.unique(dest_bucket, return_inverse=True)
 
-        # Map each user to its bucket
-        for user in range(n_users):
-            hash_value = hash_values[user]
-            # Check if the hash value already exists in the dictionary
-            if hash_value in candidate_pairs:
-                # If it does, add the current user to the candidate list
-                candidate_pairs[hash_value].append(user)
-            else:
-                # If not, create a new entry in the dictionary
-                candidate_pairs[hash_value] = [user]
+        for bucket_index in range(len(buckets)):
+            bucket_users = np.argwhere(bucket_indices == bucket_index).flatten()
+
+            # With fewer than 2 users in the bucket, there are no candidate pairs
+            if len(bucket_users > 1):
+                hash_values = buckets[bucket_index]
+                candidate_pairs[hash_values].extend(bucket_users)
+
 
     # Iterate through each bucket and find candidate pairs
     similar_users = set()
@@ -154,11 +151,11 @@ def lsh(signature_matrix : np.ndarray, n_bands : int, similarity_function, thres
             continue
         
         # Calculate similarity for each pair of users in the bucket
-        pair_similarities = np.fromiter(((similarity_function(signature_matrix[:,bucket[i]], signature_matrix[:,bucket[j]])) for i in range(len(bucket)) for j in range(i+1, len(bucket))), dtype=float).reshape(len(bucket), -1)
-
+        pair_similarities = np.fromiter(((similarity_function(signature_matrix[:,bucket[i]], signature_matrix[:,bucket[j]])) for i in range(len(bucket)) for j in range(i+1, len(bucket))), dtype=float)
+        
         # Find indices of pairs with similarity above the threshold
-        similar_pairs_indices = np.argwhere(pair_similarities > threshold)
-
+        similar_pairs_indices = [(i, j) for i in range(len(bucket) - 1) for j in range(i + 1, len(bucket)) if pair_similarities[i * (len(bucket) - 1) + j - i - 1] > threshold]
+        
         similar_users.update((bucket[i], bucket[j]) for i,j in similar_pairs_indices)
 
 
@@ -200,6 +197,10 @@ def main():
     n_hashes = 100
     signature_matrix = minhash(rating_matrix, n_hashes)
 
+    stop = time.time()
+
+    print("Time elapsed for minhash: ", stop - start)
+
     del rating_matrix
 
     # compute LSH
@@ -210,7 +211,7 @@ def main():
 
     # Stop timer
     end = time.time()
-    print("Time elapsed: ", end - start)
+    print("Total time elapsed: ", end - start)
 
     # write results to file corresponding to the similarity measure
     write_result(candidate_pairs, similarity_measure+".txt")
