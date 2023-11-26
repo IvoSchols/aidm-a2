@@ -31,7 +31,7 @@ def load_data(file_path : str):
     n_users = np.max(users)
     n_movies = np.max(movies)
     
-    rating_matrix = sparse.csr_matrix((ratings, (users, movies)), shape=(n_users+1, n_movies+1))
+    rating_matrix = sparse.csc_matrix((ratings, (users, movies)), shape=(n_users+1, n_movies+1))
     
     return rating_matrix
 
@@ -52,11 +52,11 @@ def write_result(candidate_pairs : list, file_name : str):
 # x: input value
 # a, b, c: parameters of the hash function
 # n_buckets: number of buckets
-def hash_function(x : int, a : int, b : int, c : int, n_buckets : int):
+def hash_function(x : np.ndarray, a : int, b : int, c : int, n_buckets : int):
     return ((a*x + b) % c) % n_buckets
 
 # Takes a rating matrix of shape (n_users, n_movies) and a hash function and returns the minimum hash value for each user
-def minhash(rating_matrix : sparse.csr_matrix, n_hashes : int):
+def minhash(rating_matrix : sparse.csc_matrix, n_hashes : int):
     n_users = rating_matrix.shape[0]
     n_movies = rating_matrix.shape[1]
 
@@ -71,7 +71,7 @@ def minhash(rating_matrix : sparse.csr_matrix, n_hashes : int):
 
     # Iterate through each hash function and update the signature matrix
     for i in range(n_hashes):
-        # Calculate hash values for all non-zero entries in the rating matrix
+        # Calculate hash values for all non-zero columns in the rating matrix
         hash_values = hash_function(non_zero_indices[1], hash_functions[i][0], hash_functions[i][1],
                                     hash_functions[i][2], n_movies)
         
@@ -146,17 +146,28 @@ def lsh(signature_matrix : np.ndarray, n_bands : int, similarity_function, thres
     similar_users = set()
 
     for bucket in candidate_pairs.values():
-        # With fewer than 2 users in the bucket, there are no candidate pairs
+        # If there is only one user in the bucket, there are no candidate pairs
         if len(bucket) < 2:
             continue
         
-        # Calculate similarity for each pair of users in the bucket
-        pair_similarities = np.fromiter(((similarity_function(signature_matrix[:,bucket[i]], signature_matrix[:,bucket[j]])) for i in range(len(bucket)) for j in range(i+1, len(bucket))), dtype=float)
-        
-        # Find indices of pairs with similarity above the threshold
-        similar_pairs_indices = [(i, j) for i in range(len(bucket) - 1) for j in range(i + 1, len(bucket)) if pair_similarities[i * (len(bucket) - 1) + j - i - 1] > threshold]
-        
-        similar_users.update((bucket[i], bucket[j]) for i,j in similar_pairs_indices)
+        # Create a meshgrid of indices for all combinations of users in the bucket
+        i, j = np.meshgrid(bucket, bucket)
+        i, j = i.flatten(), j.flatten()
+
+        # Avoid self-comparisons and duplicate pairs
+        mask = i < j
+        i, j = i[mask], j[mask]
+
+        user1_sigs = signature_matrix[:, i]
+        user2_sigs = signature_matrix[:, j]
+
+        similarities = similarity_function(user1_sigs, user2_sigs)
+
+        # Use numpy boolean indexing to find pairs with similarity above the threshold
+        similar_pairs_indices = np.where(similarities > threshold)
+
+        similar_users.update((i[idx], j[idx]) for idx in similar_pairs_indices[0])
+
 
 
     return similar_users
@@ -170,7 +181,8 @@ def main():
     similarity_measure = args.m
 
     # TODO: remove
-    similarity_measure = 'js'
+    if similarity_measure is None:
+        similarity_measure = 'js'
 
     if similarity_measure != 'js' and similarity_measure != 'cs' and similarity_measure != 'dcs':
         raise Exception("Unknown similarity measure")
