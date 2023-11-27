@@ -27,8 +27,8 @@ def hash_function_cosine(x : np.ndarray, a : int, b : int, n_buckets : int):
 
 def parse_args():
     argparser = argparse.ArgumentParser()
-    # argparser.add_argument("-d", default="data/user_movie_rating_subset.npy", help="specify data file path")
-    argparser.add_argument("-d", default="data/user_movie_rating.npy", help="specify data file path")
+    argparser.add_argument("-d", default="data/user_movie_rating_subset.npy", help="specify data file path")
+    # argparser.add_argument("-d", default="data/user_movie_rating.npy", help="specify data file path")
     argparser.add_argument("-s", default=42, type=int, help="the random seed to be used")
     argparser.add_argument("-m", choices = ['js','cs','dcs'], help="similarity measure: jacard (js), cosine (cs), discrete cosine (dcs)")
     args = argparser.parse_args()
@@ -47,7 +47,7 @@ def load_data(file_path : str):
     n_users = np.max(users)
     n_movies = np.max(movies)
     
-    rating_matrix = sparse.csc_matrix((ratings, (users, movies)), shape=(n_users+1, n_movies+1))
+    rating_matrix = sparse.csc_matrix((ratings, (movies, users)), shape=(n_movies+1, n_users+1))
     
     return rating_matrix
 
