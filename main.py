@@ -85,8 +85,7 @@ def minhash_jaccard(rating_matrix, n_hashes : int):
         hash_values = hash_function_jaccard(non_zero_indices[1], hash_functions[i][0], hash_functions[i][1],
                                     hash_functions[i][2], n_movies)
         
-        np.minimum.at(signature_matrix[i], non_zero_indices[1], hash_values)
-
+        signature_matrix[i, non_zero_indices[1]] = np.minimum(signature_matrix[i, non_zero_indices[1]], hash_values)
 
     return signature_matrix
 
