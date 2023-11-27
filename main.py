@@ -147,7 +147,7 @@ def lsh(signature_matrix : np.ndarray, n_bands : int, similarity_function, thres
 
                     # Add pair to the set if above the threshold
                     if similarity > threshold:
-                        similar_users.update((user1,user2))
+                        similar_users.add((user1,user2))
 
 
 
