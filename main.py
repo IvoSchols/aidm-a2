@@ -85,9 +85,7 @@ def minhash_jaccard(rating_matrix : sparse.csc_matrix, n_hashes : int):
         hash_values = hash_function_jaccard(non_zero_indices[1], hash_functions[i][0], hash_functions[i][1],
                                     hash_functions[i][2], n_movies)
         
-        for user_index, hash_value in zip(non_zero_indices[1], hash_values):
-            signature_matrix[i, user_index] = min(signature_matrix[i, user_index], hash_value)
-
+        np.minimum.at(signature_matrix[i], non_zero_indices[1], hash_values)
 
 
     return signature_matrix
@@ -106,8 +104,7 @@ def minhash_cosine(rating_matrix : sparse.csc_matrix, n_hashes : int):
     for i in range(n_hashes):
         hash_values = hash_function_cosine(non_zero_indices[1], hash_functions[i][0], hash_functions[i][1], n_movies)
 
-        for user_index, hash_value in zip(non_zero_indices[1], hash_values):
-            signature_matrix[i, user_index] = min(signature_matrix[i, user_index], hash_value)
+        np.minimum.at(signature_matrix[i], non_zero_indices[1], hash_values)
 
     return signature_matrix
   
