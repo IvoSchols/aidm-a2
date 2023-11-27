@@ -11,8 +11,8 @@ import argparse
 
 def parse_args():
     argparser = argparse.ArgumentParser()
-    # argparser.add_argument("-d", default="data/user_movie_rating_subset.npy", help="specify data file path")
-    argparser.add_argument("-d", default="data/user_movie_rating.npy", help="specify data file path")
+    argparser.add_argument("-d", default="data/user_movie_rating_subset.npy", help="specify data file path")
+    # argparser.add_argument("-d", default="data/user_movie_rating.npy", help="specify data file path")
     argparser.add_argument("-s", default=42, type=int, help="the random seed to be used")
     argparser.add_argument("-m", choices = ['js','cs','dcs'], help="similarity measure: jacard (js), cosine (cs), discrete cosine (dcs)")
     args = argparser.parse_args()
@@ -118,9 +118,7 @@ def lsh(signature_matrix : np.ndarray, n_bands : int, similarity_function, thres
     hash_functions = np.random.randint(1,1000,(n_bands,3))
     n_buckets = n_users // 2
 
-
-    # Initialize a dictionary to store candidate pairs
-    candidate_pairs = defaultdict(list)
+    similar_users = set()
 
     # Apply LSH to find candidate pairs
     for band in range(n_bands):
@@ -136,41 +134,25 @@ def lsh(signature_matrix : np.ndarray, n_bands : int, similarity_function, thres
         for bucket_index in range(len(buckets)):
             bucket_users = np.argwhere(bucket_indices == bucket_index).flatten()
 
-            # With fewer than 2 users in the bucket, there are no candidate pairs
-            if len(bucket_users > 1):
-                hash_values = buckets[bucket_index]
-                candidate_pairs[hash_values].extend(bucket_users)
+            for i in range(len(bucket_users)):
+                user1 = bucket_users[i]
+                user1_sig = signature_matrix[:, user1]
 
+                for j in range(i + 1, len(bucket_users)):
+                    user2 = bucket_users[j]
+                    user2_sig = signature_matrix[:, user2]
 
-    # Iterate through each bucket and find candidate pairs
-    similar_users = set()
+                    # Calculate the similarity for the pair
+                    similarity = similarity_function(user1_sig, user2_sig)
 
-    for bucket in candidate_pairs.values():
-        # If there is only one user in the bucket, there are no candidate pairs
-        if len(bucket) < 2:
-            continue
-        
-        # Create a meshgrid of indices for all combinations of users in the bucket
-        i, j = np.meshgrid(bucket, bucket)
-        i, j = i.flatten(), j.flatten()
-
-        # Avoid self-comparisons and duplicate pairs
-        mask = i < j
-        i, j = i[mask], j[mask]
-
-        user1_sigs = signature_matrix[:, i]
-        user2_sigs = signature_matrix[:, j]
-
-        similarities = similarity_function(user1_sigs, user2_sigs)
-
-        # Use numpy boolean indexing to find pairs with similarity above the threshold
-        similar_pairs_indices = np.where(similarities > threshold)
-
-        similar_users.update((i[idx], j[idx]) for idx in similar_pairs_indices[0])
+                    # Add pair to the set if above the threshold
+                    if similarity > threshold:
+                        similar_users.update((user1,user2))
 
 
 
     return similar_users
+
 
 
 
