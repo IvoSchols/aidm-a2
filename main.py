@@ -91,7 +91,7 @@ def minhash_jaccard(rating_matrix, n_hashes : int):
     return signature_matrix
 
 
-def minhash_cosine(rating_matrix : sparse.csc_matrix, n_hashes : int):
+def minhash_cosine(rating_matrix, n_hashes : int):
     n_movies = rating_matrix.shape[0]
     n_users = rating_matrix.shape[1]
 
