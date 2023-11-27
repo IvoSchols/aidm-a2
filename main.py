@@ -5,6 +5,10 @@ from scipy import sparse
 import os
 import argparse
 
+# List of prime numbers to be used for hashing -> prime numbers are used to reduce the number of collisions
+# https://prime-numbers.info/list/first-100-primes
+prime_numbers = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167, 173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229, 233, 239, 241, 251, 257, 263, 269, 271, 277, 281, 283, 293, 307, 311, 313, 317, 331, 337, 347, 349, 353, 359, 367, 373, 379, 383, 389, 397, 401, 409, 419, 421, 431, 433, 439, 443, 449, 457, 461, 463, 467, 479, 487, 491, 499, 503, 509, 521, 523, 541]
+
 ###
 # Parsing Args, Reading & Writing Data
 ###
@@ -60,8 +64,9 @@ def minhash(rating_matrix : sparse.csc_matrix, n_hashes : int):
     n_users = rating_matrix.shape[0]
     n_movies = rating_matrix.shape[1]
 
-    # generate hash functions by representing them as the coefficients a,b,c of the hash function h(x,a,b,c,n_buckets)
-    hash_functions = np.random.randint(1,1000,(n_hashes,3))
+    # generate hash functions by representing them as the coefficients a,b of the hash function h(x,a,b,c,n_buckets)
+    # c is a prime number and n_buckets is the number of buckets
+    hash_functions = [[np.random.randint(1,1000),np.random.randint(1,1000),prime_numbers[i]] for i in range(n_hashes)]
     
     # Generate signature matrix with all values set to infinity
     signature_matrix = np.full((n_hashes,n_users),np.inf)
@@ -108,9 +113,50 @@ def discrete_cosine_similarity(x : np.ndarray, y : np.ndarray):
 # Divide the signature matrix into n_bands bands and n_rows rows per band
 # If two users are similar, that is:
 #   - jaccard_similarity > 0.5
+def lsh_jaccard(signature_matrix : np.ndarray, n_bands : int):
+    n_hashes, n_users = signature_matrix.shape
+    rows_per_band = n_hashes // n_bands    
+
+    # Generate hash functions for each band
+    hash_functions = [[np.random.randint(1,1000),np.random.randint(1,1000),np.random.choice(prime_numbers)] for _ in range(n_bands)]
+    n_buckets = n_users // 2
+
+    similar_users = set()
+
+    # Apply LSH to find candidate pairs
+    for band in range(n_bands):
+        # Extract a band from the signature matrix
+        band_matrix = signature_matrix[band * rows_per_band: (band + 1) * rows_per_band, :]
+
+        # Collapse the rows of the band into a single row for each user and calculate its destination bucket
+        dest_bucket = hash_function(np.sum(band_matrix, axis=0), hash_functions[band][0], hash_functions[band][1], hash_functions[band][2], n_buckets)
+
+        # Find unique buckets and map each user to its bucket
+        buckets, bucket_indices = np.unique(dest_bucket, return_inverse=True)
+
+        for bucket_index in range(len(buckets)):
+            bucket_users = np.argwhere(bucket_indices == bucket_index).flatten()
+
+            for i in range(len(bucket_users)):
+                user1 = bucket_users[i]
+                user1_sig = signature_matrix[:, user1]
+
+                for j in range(i + 1, len(bucket_users)):
+                    user2 = bucket_users[j]
+                    user2_sig = signature_matrix[:, user2]
+
+                    # Add pair to the set if above the threshold
+                    if jaccard_similarity(user1_sig, user2_sig) > 0.5:
+                        similar_users.add((user1,user2))
+
+
+
+    return similar_users
+
+
 #   - cosine_similarity > 0.73
 #   - discrete_cosine_similarity > 0.73
-def lsh(signature_matrix : np.ndarray, n_bands : int, similarity_function, threshold: float):
+def lsh_cosine(signature_matrix : np.ndarray, n_bands : int, similarity_function):
     n_hashes, n_users = signature_matrix.shape
     rows_per_band = n_hashes // n_bands    
 
@@ -142,18 +188,13 @@ def lsh(signature_matrix : np.ndarray, n_bands : int, similarity_function, thres
                     user2 = bucket_users[j]
                     user2_sig = signature_matrix[:, user2]
 
-                    # Calculate the similarity for the pair
-                    similarity = similarity_function(user1_sig, user2_sig)
-
                     # Add pair to the set if above the threshold
-                    if similarity > threshold:
+                    if similarity_function(user1_sig, user2_sig) > 0.73:
                         similar_users.add((user1,user2))
 
 
 
     return similar_users
-
-
 
 
 def main():
@@ -168,16 +209,6 @@ def main():
 
     if similarity_measure != 'js' and similarity_measure != 'cs' and similarity_measure != 'dcs':
         raise Exception("Unknown similarity measure")
-
-    if similarity_measure == 'js':
-        similarity_function = jaccard_similarity
-        threshold = 0.5
-    elif similarity_measure == 'cs':
-        similarity_function = cosine_similarity
-        threshold = 0.73
-    elif similarity_measure == 'dcs':
-        similarity_function = discrete_cosine_similarity
-        threshold = 0.73
 
     np.random.seed(seed)
     
@@ -199,7 +230,13 @@ def main():
 
     # compute LSH
     n_bands = 20
-    candidate_pairs = lsh(signature_matrix, n_bands, similarity_function, threshold)
+
+    if similarity_measure == 'js':
+        candidate_pairs = lsh_jaccard(signature_matrix, n_bands)
+    elif similarity_measure == 'cs':
+        candidate_pairs = lsh_cosine(signature_matrix, n_bands, cosine_similarity)
+    elif similarity_measure == 'dcs':
+        candidate_pairs = lsh_cosine(signature_matrix, n_bands, discrete_cosine_similarity)
 
     del signature_matrix
 
