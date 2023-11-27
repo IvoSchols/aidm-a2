@@ -27,8 +27,8 @@ def hash_function_cosine(x : np.ndarray, a : int, b : int, n_buckets : int):
 
 def parse_args():
     argparser = argparse.ArgumentParser()
-    argparser.add_argument("-d", default="data/user_movie_rating_subset.npy", help="specify data file path")
-    # argparser.add_argument("-d", default="data/user_movie_rating.npy", help="specify data file path")
+    # argparser.add_argument("-d", default="data/user_movie_rating_subset.npy", help="specify data file path")
+    argparser.add_argument("-d", default="data/user_movie_rating.npy", help="specify data file path")
     argparser.add_argument("-s", default=42, type=int, help="the random seed to be used")
     argparser.add_argument("-m", choices = ['js','cs','dcs'], help="similarity measure: jacard (js), cosine (cs), discrete cosine (dcs)")
     args = argparser.parse_args()
@@ -105,7 +105,7 @@ def minhash_cosine(rating_matrix : sparse.csc_matrix, n_hashes : int):
 
     for i in range(n_hashes):
         hash_values = hash_function_cosine(non_zero_indices[1], hash_functions[i][0], hash_functions[i][1], n_movies)
-        
+
         for user_index, hash_value in zip(non_zero_indices[1], hash_values):
             signature_matrix[i, user_index] = min(signature_matrix[i, user_index], hash_value)
 
