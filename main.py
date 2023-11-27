@@ -66,8 +66,8 @@ def write_result(candidate_pairs : list, file_name : str):
 
 # Takes a rating matrix of shape (n_users, n_movies) and a hash function and returns the minimum hash value for each user
 def minhash_jaccard(rating_matrix : sparse.csc_matrix, n_hashes : int):
-    n_users = rating_matrix.shape[0]
-    n_movies = rating_matrix.shape[1]
+    n_movies= rating_matrix.shape[0]
+    n_users = rating_matrix.shape[1]
 
     # generate hash functions by representing them as the coefficients a,b of the hash function h(x,a,b,c,n_buckets)
     # c is a prime number and n_buckets is the number of buckets
@@ -92,8 +92,8 @@ def minhash_jaccard(rating_matrix : sparse.csc_matrix, n_hashes : int):
 
 
 def minhash_cosine(rating_matrix : sparse.csc_matrix, n_hashes : int):
-    n_users = rating_matrix.shape[0]
-    n_movies = rating_matrix.shape[1]
+    n_movies = rating_matrix.shape[0]
+    n_users = rating_matrix.shape[1]
 
     hash_functions = [[np.random.randint(1, 1000), np.random.randint(1, 1000)] for _ in range(n_hashes)]
 
