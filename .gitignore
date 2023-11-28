@@ -1,2 +1,3 @@
 data/user_movie_rating.npy
+data/user_movie_rating_subset.npy
 .venv

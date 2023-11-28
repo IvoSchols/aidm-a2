@@ -37,7 +37,7 @@ def parse_args():
     return args
 
 # Load data from file and transform it into a numpy array
-def load_data(file_path : str):
+def load_data_jaccard(file_path : str):
     # Ratings is a numpy array of shape (n_ratings, 3): [user_id, movie_id, rating]
     ratings_data = np.load(file_path) 
     
@@ -47,6 +47,20 @@ def load_data(file_path : str):
     ratings = ratings_data[:,2]
     
     rating_matrix = sparse.csc_matrix((ratings, (movies, users)))
+    
+    return rating_matrix
+
+# Load data from file and transform it into a numpy array
+def load_data_cosine(file_path : str):
+    # Ratings is a numpy array of shape (n_ratings, 3): [user_id, movie_id, rating]
+    ratings_data = np.load(file_path) 
+    
+    # Create a column (user) based sparse matrix of shape (users, movies) from the ratings
+    users = ratings_data[:,0]
+    movies = ratings_data[:,1]
+    ratings = ratings_data[:,2]
+    
+    rating_matrix = sparse.csr_matrix((ratings, (users, movies)))
     
     return rating_matrix
 
@@ -91,7 +105,7 @@ def minhash_jaccard(rating_matrix, n_hashes : int):
 # Similarity Measures
 ##
 
-# Return the Jaccard similarity of two sets x and y
+# Return the Jaccard similarity of two sets x and y (this is done inline after measuring performance)
 def jaccard_similarity(x : np.ndarray, y : np.ndarray):
     intersection_size = np.sum(np.isin(x,y))
     union_size = len(x) + len(y) - intersection_size
@@ -208,7 +222,6 @@ def main():
     np.random.seed(seed)
     
     # load data
-    rating_matrix = load_data(directory)
 
     # Start timer
     start = time.time()
@@ -218,9 +231,11 @@ def main():
     n_hashes = 100         # Can also be tuned -> higher values lead to better results but take longer to compute
 
     if similarity_measure == 'js':
+        rating_matrix = load_data_jaccard(directory)
         signature_matrix = minhash_jaccard(rating_matrix, n_hashes)
         del rating_matrix # free memory
     elif similarity_measure == 'cs' or similarity_measure == 'dcs':
+        rating_matrix = load_data_cosine(directory)
         projection_matrix = SparseRandomProjection(n_components=num_projections, dense_output=False, random_state=seed)
 
     # Stop timer
