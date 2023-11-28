@@ -205,7 +205,7 @@ def lsh_cosine(rating_matrix, projection_matrix: SparseRandomProjection, similar
         for user_bucket in user_buckets.values():
             # Iterate through each pair of users in the bucket
             for user1, user2 in combinations(user_bucket, 2):
-                similarity = similarity_function(rating_matrix[:, user1].toarray(), rating_matrix[:, user2].toarray())
+                similarity = similarity_function(rating_matrix[user1].toarray(), rating_matrix[user2].toarray())
 
                 if similarity > 0.73:
                     similar_users.append((user1, user2))
@@ -253,15 +253,17 @@ def main():
     print("Time elapsed for minhash/projection matrix: ", stop - start)
 
     # Compute LSH
-    n_bands = 20 # TODO: DO tune this parameter!
+    n_bands = 3 # TODO: DO tune this parameter!
 
     if similarity_measure == 'js':
         lsh_jaccard(signature_matrix, n_bands)
         del signature_matrix # free memory
     elif similarity_measure == 'cs':
         lsh_cosine(rating_matrix, projection_matrix, cosine_similarity, n_bands)
+        del rating_matrix # free memory
     elif similarity_measure == 'dcs':
         lsh_cosine(rating_matrix, projection_matrix, discrete_cosine_similarity, n_bands)
+        del rating_matrix # free memory
 
     # Stop timer
     end = time.time()
