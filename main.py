@@ -4,6 +4,7 @@ import numpy as np
 from scipy import sparse
 import os
 import argparse
+from line_profiler import LineProfiler
 
 # List of prime numbers to be used for hashing -> prime numbers are used to reduce the number of collisions
 # https://prime-numbers.info/list/first-100-primes
@@ -13,6 +14,7 @@ prime_numbers = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59,
 # x: input value
 # a, b, c: parameters of the hash function
 # n_buckets: number of buckets
+@profile
 def hash_function_jaccard(x : np.ndarray, a : int, b : int, c : int, n_buckets : int):
     return ((a*x + b) % c) % n_buckets
 
@@ -65,6 +67,7 @@ def write_result(candidate_pairs : list, file_name : str):
 ##
 
 # Takes a rating matrix of shape (n_users, n_movies) and a hash function and returns the minimum hash value for each user
+@profile
 def minhash_jaccard(rating_matrix, n_hashes : int):
     n_movies= rating_matrix.shape[0]
     n_users = rating_matrix.shape[1]
@@ -82,9 +85,9 @@ def minhash_jaccard(rating_matrix, n_hashes : int):
     # Iterate through each hash function and update the signature matrix
     for i in range(n_hashes):
         # Calculate hash values for all non-zero columns in the rating matrix
-        hash_values = hash_function_jaccard(non_zero_indices[1], hash_functions[i][0], hash_functions[i][1],
-                                    hash_functions[i][2], n_movies)
-        
+        hash_values = hash_function_jaccard(rating_matrix[non_zero_indices], hash_functions[i][0],
+                                            hash_functions[i][1], hash_functions[i][2], n_movies)
+        # Update the signature matrix with the minimum hash value for each user
         signature_matrix[i, non_zero_indices[1]] = np.minimum(signature_matrix[i, non_zero_indices[1]], hash_values)
 
     return signature_matrix
@@ -101,9 +104,11 @@ def minhash_cosine(rating_matrix, n_hashes : int):
     non_zero_indices = rating_matrix.nonzero()
 
     for i in range(n_hashes):
-        hash_values = hash_function_cosine(non_zero_indices[1], hash_functions[i][0], hash_functions[i][1], n_movies)
-
-        np.minimum.at(signature_matrix[i], non_zero_indices[1], hash_values)
+        # Calculate hash values for all non-zero columns in the rating matrix
+        hash_values = hash_function_cosine(rating_matrix[non_zero_indices], hash_functions[i][0],
+                                            hash_functions[i][1], hash_functions[i][2], n_movies)
+        # Update the signature matrix with the minimum hash value for each user
+        signature_matrix[i, non_zero_indices[1]] = np.minimum(signature_matrix[i, non_zero_indices[1]], hash_values)
 
     return signature_matrix
   
@@ -113,6 +118,7 @@ def minhash_cosine(rating_matrix, n_hashes : int):
 ##
 
 # Return the Jaccard similarity of two sets x and y
+@profile
 def jaccard_similarity(x : np.ndarray, y : np.ndarray):
     intersection = np.intersect1d(x,y)
     union = np.union1d(x,y)
@@ -136,6 +142,7 @@ def discrete_cosine_similarity(x : np.ndarray, y : np.ndarray):
 # Divide the signature matrix into n_bands bands and n_rows rows per band
 # If two users are similar, that is:
 #   - jaccard_similarity > 0.5
+@profile
 def lsh_jaccard(signature_matrix : np.ndarray, n_bands : int):
     n_hashes, n_users = signature_matrix.shape
     rows_per_band = n_hashes // n_bands    
