@@ -115,7 +115,7 @@ def cosine_similarity(x : np.ndarray, y : np.ndarray):
     norm_x, norm_y = np.linalg.norm(x), np.linalg.norm(y)
     if norm_x == 0 or norm_y == 0:
         return 0
-    theta = np.arccos(np.dot(x.T,y) / (norm_x * norm_y))
+    theta = np.arccos(np.dot(x,y.T) / (norm_x * norm_y))
     return 1- theta/180
 
 # Return the discrete cosine similarity of two vectors x and y
@@ -125,7 +125,7 @@ def discrete_cosine_similarity(x : np.ndarray, y : np.ndarray):
     norm_x, norm_y = np.linalg.norm(x), np.linalg.norm(y)
     if norm_x == 0 or norm_y == 0:
         return 0
-    theta = np.arccos(np.dot(x.T,y) / (norm_x * norm_y))
+    theta = np.arccos(np.dot(x,y.T) / (norm_x * norm_y))
     return 1- theta/180
 
 ##
