@@ -8,6 +8,7 @@ from sklearn.random_projection import SparseRandomProjection
 from itertools import combinations
 
 # List of prime numbers to be used for hashing -> prime numbers are used to reduce the number of collisions
+# We know that max(user_id) = 103704 -> we need prime numbers up to 103704
 # https://prime-numbers.info/list/first-100-primes
 prime_numbers = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167, 173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229, 233, 239, 241, 251, 257, 263, 269, 271, 277, 281, 283, 293, 307, 311, 313, 317, 331, 337, 347, 349, 353, 359, 367, 373, 379, 383, 389, 397, 401, 409, 419, 421, 431, 433, 439, 443, 449, 457, 461, 463, 467, 479, 487, 491, 499, 503, 509, 521, 523, 541]
 
@@ -40,15 +41,12 @@ def load_data(file_path : str):
     # Ratings is a numpy array of shape (n_ratings, 3): [user_id, movie_id, rating]
     ratings_data = np.load(file_path) 
     
-    # Create a column (user) based sparse matrix of shape (n_users, n_movies) from the ratings
+    # Create a column (user) based sparse matrix of shape (users, movies) from the ratings
     users = ratings_data[:,0]
     movies = ratings_data[:,1]
     ratings = ratings_data[:,2]
-
-    n_users = np.max(users)
-    n_movies = np.max(movies)
     
-    rating_matrix = sparse.csc_matrix((ratings, (movies, users)), shape=(n_movies+1, n_users+1))
+    rating_matrix = sparse.csc_matrix((ratings, (movies, users)))
     
     return rating_matrix
 
@@ -148,17 +146,16 @@ def lsh_jaccard(signature_matrix : np.ndarray, n_bands : int):
         for bucket_index in range(len(buckets)):
             bucket_users = np.argwhere(bucket_indices == bucket_index).flatten()
 
-            for i in range(len(bucket_users)):
-                user1 = bucket_users[i]
+            # Iterate through each pair of users in the bucket
+            for user1, user2 in combinations(bucket_users, 2):
                 user1_sig = signature_matrix[:, user1]
+                user2_sig = signature_matrix[:, user2]
 
-                for j in range(i + 1, len(bucket_users)):
-                    user2 = bucket_users[j]
-                    user2_sig = signature_matrix[:, user2]
-
-                    # Add pair to the set if above the threshold
-                    if jaccard_similarity(user1_sig, user2_sig) > 0.5:
-                        similar_users.append((user1,user2))
+                # Add pair to the set if above the threshold -> calculation is done inline for performance reasons
+                intersection_size = np.sum(np.isin(user1_sig,user2_sig))
+                union_size = n_hashes + n_hashes - intersection_size # n_hashes = len(user1_sig) = len(user2_sig)
+                if intersection_size / union_size > 0.5:
+                    similar_users.append((user1,user2))
         
         append_result(similar_users, "js.txt")
 
