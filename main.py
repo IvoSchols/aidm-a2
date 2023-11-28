@@ -38,7 +38,6 @@ def parse_args():
 # Load data from file and transform it into a numpy array
 def load_data_jaccard(file_path : str):
     # Ratings is a numpy array of shape (n_ratings, 3): [user_id, movie_id, rating]
-<<<<<<< HEAD
     ratings_data = np.load(file_path) 
     
     # Create a column (user) based sparse matrix of shape (users, movies) from the ratings
@@ -62,20 +61,6 @@ def load_data_cosine(file_path : str):
     
     rating_matrix = sparse.csr_matrix((ratings, (users, movies)))
     
-=======
-    ratings_data = np.load(file_path)
-
-    # Create a column (user) based sparse matrix of shape (n_users, n_movies) from the ratings
-    users = ratings_data[:,0]
-    movies = ratings_data[:,1]
-    ratings = ratings_data[:,2]
-
-    n_users = np.max(users)
-    n_movies = np.max(movies)
-
-    rating_matrix = sparse.csc_matrix((ratings, (movies, users)), shape=(n_movies+1, n_users+1))
-
->>>>>>> 5f1ddce213814f8e5ffe3430cd824a44d4d8da96
     return rating_matrix
 
 # Append candidate pairs to file
@@ -181,22 +166,12 @@ def lsh_jaccard(signature_matrix : np.ndarray, n_bands : int):
                 user1_sig = signature_matrix[:, user1]
                 user2_sig = signature_matrix[:, user2]
 
-<<<<<<< HEAD
                 # Add pair to the set if above the threshold -> calculation is done inline for performance reasons
                 intersection_size = np.sum(np.isin(user1_sig,user2_sig))
                 union_size = n_hashes + n_hashes - intersection_size # n_hashes = len(user1_sig) = len(user2_sig)
                 if intersection_size / union_size > 0.5:
                     similar_users.append((user1,user2))
         
-=======
-                for j in range(i + 1, len(bucket_users)):
-                    user2 = bucket_users[j]
-                    user2_sig = signature_matrix[:, user2]
-                    # Add pair to the set if above the threshold
-                    if jaccard_similarity(user1_sig, user2_sig) > 0.5:
-                        similar_users.append((user1,user2))
-
->>>>>>> 5f1ddce213814f8e5ffe3430cd824a44d4d8da96
         append_result(similar_users, "js.txt")
 
 
@@ -205,34 +180,43 @@ def lsh_jaccard(signature_matrix : np.ndarray, n_bands : int):
 # and then bin the users into buckets based on their hash
 #   - cosine_similarity > 0.73
 #   - discrete_cosine_similarity > 0.73
-def lsh_cosine(rating_matrix, projection_matrix: SparseRandomProjection, similarity_function):
+def lsh_cosine(rating_matrix, projection_matrix: SparseRandomProjection, similarity_function, n_bands):
     # Project the rating matrix onto a lower dimensional space
     projected_matrix = projection_matrix.fit_transform(rating_matrix)
-    # Hash the projected vectors
-    hashed_vectors = [hash_vector(vec) for vec in projected_matrix.A]
-
-    n_buckets = len(np.unique(hashed_vectors))
-    user_buckets = defaultdict(list)
-
-    # Put the users into buckets based on their hash
-    for user, hash in enumerate(hashed_vectors):
-        user_buckets[hash].append(user)
-
-    similar_users = list()
-
-    # Iterate through each bucket and find similar users
-    for user_bucket in user_buckets.values():
-        # Iterate through each pair of users in the bucket
-        for user1, user2 in combinations(user_bucket, 2):
-            similarity = similarity_function(rating_matrix[:, user1].toarray(), rating_matrix[:, user2].toarray())
-
-            if similarity > 0.73:
-                similar_users.append((user1, user2))
-
-    return similar_users
+    # Hash the projected vectors giving hashed_vectors of shape (users, hash)
+    hashed_vectors = np.array([hash_vector(vec) for vec in projected_matrix.A])
 
 
-def main(n_hashes,n_bands):
+    columns_per_band = len(hashed_vectors[0]) // n_bands
+    # Divide the hashed vectors into n_bands bands and n_rows rows per band
+    for band in range(n_bands):
+        #Extract a band from the vector
+        band_matrix = hashed_vectors[:, band * columns_per_band: (band + 1) * columns_per_band]
+
+        user_buckets = defaultdict(list)
+
+        # Put the users into buckets based on their hash
+        for user, hash in enumerate(band_matrix):
+            user_buckets[np.sum(hash)].append(user)
+
+        similar_users = list()
+
+        # Iterate through each bucket and find similar users
+        for user_bucket in user_buckets.values():
+            # Iterate through each pair of users in the bucket
+            for user1, user2 in combinations(user_bucket, 2):
+                similarity = similarity_function(rating_matrix[:, user1].toarray(), rating_matrix[:, user2].toarray())
+
+                if similarity > 0.73:
+                    similar_users.append((user1, user2))
+        
+        if similarity_function == cosine_similarity:
+            append_result(similar_users, "cs.txt")
+        elif similarity_function == discrete_cosine_similarity:
+            append_result(similar_users, "cs.txt")
+
+
+def main():
     args = parse_args()
     directory = args.d
     seed = args.s
@@ -240,7 +224,7 @@ def main(n_hashes,n_bands):
 
     # TODO: remove
     if similarity_measure is None:
-        similarity_measure = 'js'
+        similarity_measure = 'cs'
 
     if similarity_measure != 'js' and similarity_measure != 'cs' and similarity_measure != 'dcs':
         raise Exception("Unknown similarity measure")
@@ -254,7 +238,7 @@ def main(n_hashes,n_bands):
 
     # Compute minhash / random projection
     num_projections = 50 # TODO: DO tune this parameter!
-    #n_hashes = 25     # Can also be tuned -> higher values lead to better results but take longer to compute
+    n_hashes = 25     # Can also be tuned -> higher values lead to better results but take longer to compute
 
     if similarity_measure == 'js':
         rating_matrix = load_data_jaccard(directory)
@@ -269,21 +253,19 @@ def main(n_hashes,n_bands):
     print("Time elapsed for minhash/projection matrix: ", stop - start)
 
     # Compute LSH
-    #n_bands = 20 # TODO: DO tune this parameter!
+    n_bands = 20 # TODO: DO tune this parameter!
 
     if similarity_measure == 'js':
         lsh_jaccard(signature_matrix, n_bands)
         del signature_matrix # free memory
     elif similarity_measure == 'cs':
-        candidate_pairs = lsh_cosine(rating_matrix, projection_matrix, cosine_similarity)
-        append_result(candidate_pairs, similarity_measure+".txt")
+        lsh_cosine(rating_matrix, projection_matrix, cosine_similarity, n_bands)
     elif similarity_measure == 'dcs':
-        candidate_pairs = lsh_cosine(rating_matrix, projection_matrix, discrete_cosine_similarity)
-        append_result(candidate_pairs, similarity_measure+".txt")
+        lsh_cosine(rating_matrix, projection_matrix, discrete_cosine_similarity, n_bands)
 
     # Stop timer
     end = time.time()
     print("Total time elapsed: ", end - start)
 
 if __name__ == "__main__":
-    main(n_hashes,n_bands)
+    main()
