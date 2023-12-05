@@ -6,9 +6,6 @@ import argparse
 from sklearn.random_projection import SparseRandomProjection
 from itertools import combinations
 
-# Returns hashed vector with values in {-1, 1}
-def hash_vector(vec):
-    return tuple(1 if bit > 0 else -1 for bit in vec)
 
 ###
 # Parsing Args, Reading & Writing Data
@@ -31,7 +28,7 @@ def parse_args():
     args = argparser.parse_args()
 
     # TODO: remove
-    args.m = 'js'
+    args.m = 'cs'
 
     if args.m != 'js' and args.m != 'cs' and args.m != 'dcs':
         raise Exception("Unknown similarity measure")
@@ -44,17 +41,20 @@ def load_data(file_path : str, similarity_measure : str):
     # Ratings is a numpy array of shape (n_ratings, 3): [user_id, movie_id, rating]
     ratings_data = np.load(file_path) 
     
-    # Create a column based sparse matrix of shape (movies, users) from the ratings
+    # Create a row based sparse matrix of shape (movies, users) from the ratings for fast access in JS
+    # Create a column based sparse matrix of shape (movies, users) from the ratings for fast access in CS/DCS
     users = ratings_data[:,0]
     movies = ratings_data[:,1]
     ratings = ratings_data[:,2]
     
-    # Replace all ratings with 1
-    ratings = np.ones(len(ratings))
     if similarity_measure == 'js':
+        ratings = np.ones(len(ratings))
         rating_matrix = sparse.csr_matrix((ratings, (movies, users)), dtype='?')
-    elif similarity_measure == 'cs' or similarity_measure == 'dcs':
-        rating_matrix = sparse.csc_matrix((ratings, (movies, users)), dtype='?')
+    elif similarity_measure == 'cs':
+        rating_matrix = sparse.csc_matrix((ratings, (users, movies)), dtype='float')
+    elif similarity_measure == 'dcs':
+        ratings = np.ones(len(ratings))
+        rating_matrix = sparse.csc_matrix((ratings, (users, movies)), dtype='?')
 
     return rating_matrix
 
@@ -71,7 +71,7 @@ def append_result(candidate_pairs : list, file_name : str):
 ##
 
 # Takes a rating matrix of shape (n_movies, n_users) and returns a signature matrix of shape (n_hashes, n_users)
-@profile
+# @profile
 def minhash_jaccard(rating_matrix, n_hashes : int):
     n_movies, n_users = rating_matrix.shape
 
@@ -83,34 +83,12 @@ def minhash_jaccard(rating_matrix, n_hashes : int):
         swapped_matrix = rating_matrix[np.random.permutation(n_movies), :]
 
         # Find the index of the first True value for each user
-        min_hashes = np.argmax(swapped_matrix > 0, axis=0).astype(int)
+        min_hashes = np.argmax(swapped_matrix > 0, axis=0)
 
         # Store the minimum hash for each user
         signature_matrix[i, :] = np.minimum(min_hashes, signature_matrix[i, :])
 
     return signature_matrix.astype(int)
-
-##
-# Similarity Measures
-##
-
-# Return the cosine similarity of two vectors x and y
-def cosine_similarity(x : np.ndarray, y : np.ndarray):
-    norm_x, norm_y = np.linalg.norm(x), np.linalg.norm(y)
-    if norm_x == 0 or norm_y == 0:
-        return 0
-    theta = np.arccos(np.dot(x,y.T) / (norm_x * norm_y))
-    return 1- theta/180
-
-# Return the discrete cosine similarity of two vectors x and y
-def discrete_cosine_similarity(x : np.ndarray, y : np.ndarray):
-    x = np.sign(x)
-    y = np.sign(y)
-    norm_x, norm_y = np.linalg.norm(x), np.linalg.norm(y)
-    if norm_x == 0 or norm_y == 0:
-        return 0
-    theta = np.arccos(np.dot(x,y.T) / (norm_x * norm_y))
-    return 1- theta/180
 
 ##
 # LSH
@@ -120,9 +98,9 @@ def discrete_cosine_similarity(x : np.ndarray, y : np.ndarray):
 # Divide the signature matrix into n_bands bands and n_rows rows per band
 # If two users are similar, that is:
 #   - jaccard_similarity > 0.5
-@profile
+# @profile
 def lsh_jaccard(signature_matrix : np.ndarray, n_bands : int):
-    n_hashes, n_users = signature_matrix.shape
+    n_hashes, _ = signature_matrix.shape
     rows_per_band = n_hashes // n_bands
 
     # Apply LSH to find candidate pairs
@@ -130,8 +108,8 @@ def lsh_jaccard(signature_matrix : np.ndarray, n_bands : int):
         # Extract a band from the signature matrix
         band_matrix = signature_matrix[band * rows_per_band: (band + 1) * rows_per_band, :]
 
-        # Collapse the rows of the band into a single row for each user and calculate its destination bucket
-        dest_bucket = np.sum(band_matrix, axis=0) #% n_buckets
+        # Collapse the rows of the band into a single value for each user
+        dest_bucket = np.sum(band_matrix, axis=0)
 
         # Find unique buckets and map each user to its bucket
         buckets, bucket_indices = np.unique(dest_bucket, return_inverse=True)
@@ -142,7 +120,7 @@ def lsh_jaccard(signature_matrix : np.ndarray, n_bands : int):
         similar_users = list()
 
         for user_bucket in bucket_users_dict.values():
-            # # Iterate through each pair of users in the bucket
+            # Iterate through each pair of users in the bucket
             for user1, user2 in combinations(user_bucket, 2):
                 user1_sig = signature_matrix[:, user1]
                 user2_sig = signature_matrix[:, user2]
@@ -152,51 +130,56 @@ def lsh_jaccard(signature_matrix : np.ndarray, n_bands : int):
                 union_size = np.sum(user1_sig | user2_sig)
                 similarity = intersection_size / union_size
                 if similarity > 0.5:
-                    # print(similarity)
                     similar_users.append((user1,user2))
 
-        print("Number of similar users in band: ", len(similar_users))
         append_result(similar_users, "js.txt")
 
 
-# Return candidate pairs of shape (n_candidate_pairs, 2) by applying LSH to the given rating matrix
+# Return candidate pairs of shape (n_candidate_pairs, 2) by applying LSH to the given projected matrix (users, movies)
 # We use random projection to reduce the dimensionality of the rating matrix
 # and then bin the users into buckets based on their hash
 #   - cosine_similarity > 0.73
 #   - discrete_cosine_similarity > 0.73
-def lsh_cosine(projected_matrix, similarity_function, n_bands):
+def lsh_cosine(projected_matrix, n_bands, similarity_measure):
+    n_users, n_movies = projected_matrix.shape
 
-    # Hash the projected vectors giving hashed_vectors of shape (users, hash)
-    hashed_vectors = np.array([hash_vector(vec) for vec in projected_matrix.A])
-
-
-    columns_per_band = len(hashed_vectors[0]) // n_bands
+    columns_per_band = n_movies // n_bands
     # Divide the hashed vectors into n_bands bands and n_rows rows per band
     for band in range(n_bands):
-        #Extract a band from the vector
-        band_matrix = hashed_vectors[:, band * columns_per_band: (band + 1) * columns_per_band]
+        #Extract a band from the projected matrix
+        band_matrix = projected_matrix[:, band * columns_per_band: (band + 1) * columns_per_band]
+        # Hash the band matrix
+        hashed_band_matrix = np.sign(band_matrix)
 
-        user_buckets = defaultdict(list)
 
-        # Put the users into buckets based on their hash
-        for user, hash in enumerate(band_matrix):
-            user_buckets[np.sum(hash)].append(user)
+        # Collapse the columns of the band into a single value for each user and calculate its destination bucket
+        dest_bucket = np.sum(hashed_band_matrix, axis=1).astype(int)
+
+        # Find unique buckets and map each user to its bucket
+        buckets, bucket_indices = np.unique(dest_bucket, return_inverse=True)
+        bucket_users_dict = defaultdict(list)
+        for bucket_index in range(len(buckets)):
+            bucket_users_dict[bucket_index] = np.argwhere(bucket_indices == bucket_index).flatten()
 
         similar_users = list()
 
-        # Iterate through each bucket and find similar users
-        for user_bucket in user_buckets.values():
+        for user_bucket in bucket_users_dict.values():
             # Iterate through each pair of users in the bucket
             for user1, user2 in combinations(user_bucket, 2):
-                similarity = similarity_function(projected_matrix[user1], projected_matrix[user2])
+                user1_vec = projected_matrix[user1]
+                user2_vec = projected_matrix[user2]
+                
+                norm_user1, norm_user2 = np.linalg.norm(user1_vec), np.linalg.norm(user2_vec)
+                if norm_user1 == 0 or norm_user2 == 0:
+                    similarity = 0
+                else:
+                    theta = np.arccos(np.dot(user1_vec,user2_vec.T) / (norm_user1 * norm_user2))
+                    similarity = 1- theta/180
 
                 if similarity > 0.73:
                     similar_users.append((user1, user2))
         
-        if similarity_function == cosine_similarity:
-            append_result(similar_users, "cs.txt")
-        elif similarity_function == discrete_cosine_similarity:
-            append_result(similar_users, "dcs.txt")
+        append_result(similar_users, f"{similarity_measure}.txt")
 
 
 def main():
@@ -210,19 +193,19 @@ def main():
 
     np.random.seed(seed)
 
-    # load data
 
     # Start timer
     start = time.time()
 
-    rating_matrix = load_data(directory)
+    # Load data
+    rating_matrix = load_data(directory, similarity_measure)
 
     if similarity_measure == 'js':
         signature_matrix = minhash_jaccard(rating_matrix, n_hashes)
     elif similarity_measure == 'cs' or similarity_measure == 'dcs':
-        projection_matrix = SparseRandomProjection(n_components=n_projections, dense_output=False, random_state=seed)
-        # Project the rating matrix onto a lower dimensional space
-        projected_matrix = projection_matrix.fit_transform(rating_matrix)
+        projection_matrix = SparseRandomProjection(n_components=n_projections, random_state=seed, dense_output=True)
+        projected_matrix = projection_matrix.fit_transform(rating_matrix) # Project the rating matrix onto a lower dimensional space
+        del projection_matrix # free memory
 
     del rating_matrix # free memory
     # Stop timer
@@ -232,10 +215,8 @@ def main():
     # Compute LSH
     if similarity_measure == 'js':
         lsh_jaccard(signature_matrix, n_bands)
-    elif similarity_measure == 'cs':
-        lsh_cosine(projected_matrix, cosine_similarity, n_bands)
-    elif similarity_measure == 'dcs':
-        lsh_cosine(projected_matrix, discrete_cosine_similarity, n_bands)
+    elif similarity_measure == 'cs' or similarity_measure == 'dcs':
+        lsh_cosine(projected_matrix, n_bands, similarity_measure)
 
     # Stop timer
     end = time.time()
