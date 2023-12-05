@@ -71,7 +71,6 @@ def append_result(candidate_pairs : list, file_name : str):
 ##
 
 # Takes a rating matrix of shape (n_movies, n_users) and returns a signature matrix of shape (n_hashes, n_users)
-# @profile
 def minhash_jaccard(rating_matrix, n_hashes : int):
     n_movies, n_users = rating_matrix.shape
 
@@ -98,7 +97,6 @@ def minhash_jaccard(rating_matrix, n_hashes : int):
 # Divide the signature matrix into n_bands bands and n_rows rows per band
 # If two users are similar, that is:
 #   - jaccard_similarity > 0.5
-# @profile
 def lsh_jaccard(signature_matrix : np.ndarray, n_bands : int):
     n_hashes, _ = signature_matrix.shape
     rows_per_band = n_hashes // n_bands
@@ -140,6 +138,7 @@ def lsh_jaccard(signature_matrix : np.ndarray, n_bands : int):
 # and then bin the users into buckets based on their hash
 #   - cosine_similarity > 0.73
 #   - discrete_cosine_similarity > 0.73
+@profile
 def lsh_cosine(projected_matrix, n_bands, similarity_measure):
     n_users, n_movies = projected_matrix.shape
 
@@ -189,7 +188,6 @@ def main():
     similarity_measure = args.m
     n_hashes = args.n_hashes
     n_bands = args.n_bands
-    n_projections = args.n_projections
 
     np.random.seed(seed)
 
@@ -203,7 +201,7 @@ def main():
     if similarity_measure == 'js':
         signature_matrix = minhash_jaccard(rating_matrix, n_hashes)
     elif similarity_measure == 'cs' or similarity_measure == 'dcs':
-        projection_matrix = SparseRandomProjection(n_components=n_projections, random_state=seed, dense_output=True)
+        projection_matrix = SparseRandomProjection(n_components=n_hashes, random_state=seed, dense_output=True)
         projected_matrix = projection_matrix.fit_transform(rating_matrix) # Project the rating matrix onto a lower dimensional space
         del projection_matrix # free memory
 
