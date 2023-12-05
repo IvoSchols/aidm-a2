@@ -138,19 +138,18 @@ def lsh_jaccard(signature_matrix : np.ndarray, n_bands : int):
 # and then bin the users into buckets based on their hash
 #   - cosine_similarity > 0.73
 #   - discrete_cosine_similarity > 0.73
-@profile
+# @profile
 def lsh_cosine(projected_matrix, n_bands, similarity_measure):
-    n_users, n_movies = projected_matrix.shape
+    n_users, n_projections = projected_matrix.shape
 
-    columns_per_band = n_movies // n_bands
+    columns_per_band = n_projections // n_bands
     # Divide the hashed vectors into n_bands bands and n_rows rows per band
     for band in range(n_bands):
         #Extract a band from the projected matrix
         band_matrix = projected_matrix[:, band * columns_per_band: (band + 1) * columns_per_band]
+
         # Hash the band matrix
         hashed_band_matrix = np.sign(band_matrix)
-
-
         # Collapse the columns of the band into a single value for each user and calculate its destination bucket
         dest_bucket = np.sum(hashed_band_matrix, axis=1).astype(int)
 
@@ -168,12 +167,8 @@ def lsh_cosine(projected_matrix, n_bands, similarity_measure):
                 user1_vec = projected_matrix[user1]
                 user2_vec = projected_matrix[user2]
                 
-                norm_user1, norm_user2 = np.linalg.norm(user1_vec), np.linalg.norm(user2_vec)
-                if norm_user1 == 0 or norm_user2 == 0:
-                    similarity = 0
-                else:
-                    theta = np.arccos(np.dot(user1_vec,user2_vec.T) / (norm_user1 * norm_user2))
-                    similarity = 1- theta/180
+                theta = np.arccos(np.dot(user1_vec,user2_vec.T))
+                similarity = 1 - theta/180
 
                 if similarity > 0.73:
                     similar_users.append((user1, user2))
@@ -186,7 +181,7 @@ def main():
     directory = args.d
     seed = args.s
     similarity_measure = args.m
-    n_hashes = args.n_hashes
+    n_hashes = args.n_hashes # Used for minhash and for the number of projections
     n_bands = args.n_bands
 
     np.random.seed(seed)
