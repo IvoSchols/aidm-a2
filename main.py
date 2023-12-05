@@ -167,7 +167,7 @@ def lsh_cosine(projected_matrix, n_bands, similarity_measure):
                 user1_vec = projected_matrix[user1]
                 user2_vec = projected_matrix[user2]
                 
-                theta = np.arccos(np.dot(user1_vec,user2_vec.T))
+                theta = np.arccos(np.dot(user1_vec,user2_vec))
                 similarity = 1 - theta/180
 
                 if similarity > 0.73:
