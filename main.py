@@ -165,9 +165,11 @@ def lsh_cosine(projected_matrix, n_bands, similarity_measure):
             # Iterate through each pair of users in the bucket
             for user1, user2 in combinations(user_bucket, 2):
                 user1_vec = projected_matrix[user1]
+                unit_user1_vec = user1_vec / np.linalg.norm(user1_vec)
                 user2_vec = projected_matrix[user2]
+                unit_user2_vec = user2_vec / np.linalg.norm(user2_vec)
                 
-                theta = np.arccos(np.dot(user1_vec,user2_vec))
+                theta = np.arccos(np.dot(unit_user1_vec, unit_user2_vec))
                 similarity = 1 - theta/180
 
                 if similarity > 0.73:
