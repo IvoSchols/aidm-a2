@@ -172,7 +172,7 @@ def lsh_cosine(projected_matrix, n_bands, similarity_measure):
             
             # Find indices of similar user pairs
             similar_user_indices = np.where(similarities > 0.73)
-            similar_user_pairs = list(zip(user_bucket[similar_user_indices[0]], user_bucket[similar_user_indices[1]]))
+            similar_user_pairs = np.column_stack((user_bucket[similar_user_indices[0]], user_bucket[similar_user_indices[1]])).tolist()
 
             similar_users.extend(similar_user_pairs)
         
