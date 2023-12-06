@@ -25,7 +25,7 @@ def parse_args():
 
     #Todo: remove
     args.m = 'cs'
-    # args.n_hashes = 3000
+    args.n_hashes = 3000
 
     if args.m != 'js' and args.m != 'cs' and args.m != 'dcs':
         raise Exception("Unknown similarity measure")
@@ -198,7 +198,8 @@ def main():
         lsh_jaccard(signature_matrix, n_bands)
     elif similarity_measure == 'cs' or similarity_measure == 'dcs':
         projection_matrix = SparseRandomProjection(n_components=n_hashes, random_state=seed)
-        projected_matrix = projection_matrix.fit_transform(rating_matrix).toarray() # Project the rating matrix onto a lower dimensional space
+        # Project the rating matrix onto a lower dimensional space
+        projected_matrix = projection_matrix.fit_transform(rating_matrix).toarray().astype(np.float16)
         del projection_matrix
         del rating_matrix
         lsh_cosine(projected_matrix, n_bands, similarity_measure)

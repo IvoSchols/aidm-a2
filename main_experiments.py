@@ -156,7 +156,7 @@ def lsh_cosine(projected_matrix, n_bands, similarity_measure, file_name):
         
         append_result(similar_users, f"{file_name}.txt")
 
-def run_experiment(rating_matrix, similarity_measure, num_hash, num_band, seed, timeout):
+def run_experiment(rating_matrix, similarity_measure, num_hash, num_band, seed):
     print(f'Running experiment with measure = {similarity_measure}, num_hash = {num_hash}, num_band = {num_band}, seed = {seed}')
     np.random.seed(seed)
     file_name = f'{similarity_measure}_{num_hash}_{num_band}_{seed}'
@@ -168,7 +168,7 @@ def run_experiment(rating_matrix, similarity_measure, num_hash, num_band, seed, 
         signature_matrix = minhash_jaccard(rating_matrix, num_hash)
     elif similarity_measure == 'cs' or similarity_measure == 'dcs':
         projection_matrix = SparseRandomProjection(n_components=num_hash, random_state=seed, dense_output=True)
-        projected_matrix = projection_matrix.fit_transform(rating_matrix) # Project the rating matrix onto a lower dimensional space
+        projected_matrix = projection_matrix.fit_transform(rating_matrix).toarray().astype(np.float16) # Project the rating matrix onto a lower dimensional space
         del projection_matrix # free memory
 
     del rating_matrix # free memory
@@ -221,11 +221,11 @@ def main():
                 for num_band in num_bands:
                     for seed in seeds:
                         if measure == 'js':
-                            job = executor.submit(run_experiment, rating_matrix_js, measure, num_hash, num_band, seed, timeout)
+                            job = executor.submit(run_experiment, rating_matrix_js, measure, num_hash, num_band, seed)
                         elif measure == 'cs':
-                            job = executor.submit(run_experiment, rating_matrix_cs, measure, num_projection, num_band, seed, timeout)
+                            job = executor.submit(run_experiment, rating_matrix_cs, measure, num_projection, num_band, seed)
                         elif measure == 'dcs':
-                            job = executor.submit(run_experiment, rating_matrix_dcs, measure, num_projection, num_band, seed, timeout)
+                            job = executor.submit(run_experiment, rating_matrix_dcs, measure, num_projection, num_band, seed)
                         jobs.append(job)
 
     # Wait for all jobs to complete with a timeout
