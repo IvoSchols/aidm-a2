@@ -6,7 +6,7 @@ import argparse
 from sklearn.random_projection import SparseRandomProjection
 from itertools import combinations
 import os
-import subprocess
+import concurrent.futures
 import multiprocessing
 from time import perf_counter
 
@@ -156,9 +156,7 @@ def lsh_cosine(projected_matrix, n_bands, similarity_measure, file_name):
         
         append_result(similar_users, f"{file_name}.txt")
 
-
-def run_experiment(data, similarity_measure, num_hash, num_band, seed, timeout):
-    print(f'Running experiment with measure = {similarity_measure}, num_hash = {num_hash}, num_band = {num_band}, seed = {seed}')
+def run_experiment(rating_matrix, similarity_measure, num_hash, num_band, seed):
     np.random.seed(seed)
     file_name = f'{similarity_measure}_{num_hash}_{num_band}_{seed}'
 
@@ -173,7 +171,7 @@ def run_experiment(data, similarity_measure, num_hash, num_band, seed, timeout):
 
     del rating_matrix # free memory
     # Stop timer
-    stop = time.time()
+    stop = perf_counter() - start
     print("Time elapsed for minhash/projection matrix: ", stop - start)
 
     # Compute LSH
@@ -209,27 +207,33 @@ def main():
     rating_matrix_cs = load_data('data/user_movie_rating.npy', 'cs')
     rating_matrix_dcs = load_data('data/user_movie_rating.npy', 'dcs') 
 
+    max_cores = 2
+    num_cores = min(max_cores, multiprocessing.cpu_count())
+
     # Create a pool of workers
-    with multiprocessing.Pool(2) as pool:
+    with concurrent.futures.ProcessPoolExecutor(max_workers=num_cores) as executor:
         jobs = []
         for measure in measures:
             for num_hash, num_projection in zip(num_hashes, num_projections):
                 for num_band in num_bands:
                     for seed in seeds:
                         if measure == 'js':
-                            job = pool.apply_async(run_experiment, (rating_matrix_js, measure, num_hash, num_band, seed, timeout))
+                            job = executor.submit(run_experiment, rating_matrix_js, measure, num_hash, num_band, seed)
                         elif measure == 'cs':
-                            job = pool.apply_async(run_experiment, (rating_matrix_cs, measure, num_projection, num_band, seed, timeout))
+                            job = executor.submit(run_experiment, rating_matrix_cs, measure, num_projection, num_band, seed)
                         elif measure == 'dcs':
-                            job = pool.apply_async(run_experiment, (rating_matrix_dcs, measure, num_projection, num_band, seed, timeout))
+                            job = executor.submit(run_experiment, rating_matrix_dcs, measure, num_projection, num_band, seed)
                         jobs.append(job)
 
-        # Wait for all jobs to complete
-        pool.close()
-        pool.join()
+        # Wait for all jobs to complete with a timeout
+        done, not_done = concurrent.futures.wait(jobs, timeout=timeout)
 
-        # Collect results
-        results = [job.get() for job in jobs if job.get() is not None]
+        # Collect results from completed jobs
+        results = [job.result() for job in done]
+
+        # Cancel any tasks that did not complete within the timeout
+        for job in not_done:
+            job.cancel()
 
     print('All experiments are done!')
 
