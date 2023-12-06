@@ -217,11 +217,11 @@ def main():
                 for num_band in num_bands:
                     for seed in seeds:
                         if measure == 'js':
-                            job = pool.apply_async(run_experiment, rating_matrix_js, measure, num_hash, num_band, seed, timeout)
+                            job = pool.apply_async(run_experiment, (rating_matrix_js, measure, num_hash, num_band, seed, timeout))
                         elif measure == 'cs':
-                            job = pool.apply_async(run_experiment, rating_matrix_cs, measure, num_projection, num_band, seed, timeout)
+                            job = pool.apply_async(run_experiment, (rating_matrix_cs, measure, num_projection, num_band, seed, timeout))
                         elif measure == 'dcs':
-                            job = pool.apply_async(run_experiment, rating_matrix_dcs, measure, num_projection, num_band, seed, timeout)
+                            job = pool.apply_async(run_experiment, (rating_matrix_dcs, measure, num_projection, num_band, seed, timeout))
                         jobs.append(job)
 
         # Wait for all jobs to complete
