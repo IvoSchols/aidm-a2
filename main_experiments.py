@@ -209,34 +209,37 @@ def main():
     rating_matrix_cs = load_data('data/user_movie_rating.npy', 'cs')
     rating_matrix_dcs = load_data('data/user_movie_rating.npy', 'dcs') 
 
-    # Run experiments in parallel
-    with concurrent.futures.ProcessPoolExecutor(max_workers=81) as executor:
-        futures = []
-
-        # Submit all jobs to the pool
+    # Create a pool of workers
+    with multiprocessing.Pool(81) as pool:
+        jobs = []
         for measure in measures:
             for num_hash, num_projection in zip(num_hashes, num_projections):
                 for num_band in num_bands:
                     for seed in seeds:
                         if measure == 'js':
-                            future = executor.submit(run_experiment, (rating_matrix_js, measure, num_hash, num_band, seed))
+                            job = pool.apply_async(run_experiment, (rating_matrix_js, measure, num_hash, num_band, seed), callback=run_experiment_callback)
                         elif measure == 'cs':
-                            future = executor.submit(run_experiment, (rating_matrix_cs, measure, num_projection, num_band, seed))
+                            job = pool.apply_async(run_experiment, (rating_matrix_cs, measure, num_projection, num_band, seed), callback=run_experiment_callback)
                         elif measure == 'dcs':
-                            future = executor.submit(run_experiment, (rating_matrix_dcs, measure, num_projection, num_band, seed))
-                        futures.append(future)
+                            job = pool.apply_async(run_experiment, (rating_matrix_dcs, measure, num_projection, num_band, seed), callback=run_experiment_callback)
+                        
+                        jobs.append(job)
 
-        # Wait for all jobs to finish or until the timeout is reached
-        start_time = time.time()
-        try:
-            for f in concurrent.futures.as_completed(futures, timeout=timeout):
-                f.result()
-        except concurrent.futures.TimeoutError:
-            print("Execution exceeded the timeout. Cancelling all jobs.")
-            for f in futures:
-                f.cancel()
+        # Wait for all jobs to complete with a timeout
+        pool.close()
+        pool.join()
 
-    elapsed_time = time.time() - start_time
+        for job in jobs:
+            try:
+                job.get(timeout=timeout)
+            except TimeoutError:
+                print("Experiment timed out!")
+
+                continue 
+
+        print('All experiments are done!')
+
+    elapsed_time = time.time() - start
     print(f"Total elapsed time: {elapsed_time} seconds")
     print('All experiments are done!')
 
