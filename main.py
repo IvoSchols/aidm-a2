@@ -25,7 +25,7 @@ def parse_args():
 
     #Todo: remove
     args.m = 'cs'
-    args.n_hashes = 3000
+    args.n_hashes = 750
 
     if args.m != 'js' and args.m != 'cs' and args.m != 'dcs':
         raise Exception("Unknown similarity measure")
