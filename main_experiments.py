@@ -162,7 +162,7 @@ def run_experiment(rating_matrix, similarity_measure, num_hash, num_band, seed):
     file_name = f'{similarity_measure}_{num_hash}_{num_band}_{seed}'
 
     # Start timer
-    start = time.time()
+    start = time.perf_counter()
  
     if similarity_measure == 'js':
         signature_matrix = minhash_jaccard(rating_matrix, num_hash)
@@ -173,7 +173,7 @@ def run_experiment(rating_matrix, similarity_measure, num_hash, num_band, seed):
 
     del rating_matrix # free memory
     # Stop timer
-    stop = time.time()
+    stop = time.perf_counter()
     print("Time elapsed for minhash/projection matrix: ", stop - start)
 
     # Compute LSH
@@ -183,7 +183,7 @@ def run_experiment(rating_matrix, similarity_measure, num_hash, num_band, seed):
         lsh_cosine(projected_matrix, num_band, similarity_measure, file_name)
 
 
-    execution_time = time.time() - start
+    execution_time = time.perf_counter() - start
 
     # Append execution time to results file.
     with open(f'{file_name}.txt', 'a') as f:
@@ -202,7 +202,7 @@ def main():
     timeout = 30 * 60
 
     # Start timer
-    start = time.time()
+    start = time.perf_counter()
 
     # Load data
     rating_matrix_js = load_data('data/user_movie_rating.npy', 'js')
@@ -210,7 +210,7 @@ def main():
     rating_matrix_dcs = load_data('data/user_movie_rating.npy', 'dcs') 
 
     # Create a pool of workers
-    with multiprocessing.Pool(81) as pool:
+    with multiprocessing.Pool(100) as pool:
         jobs = []
         for measure in measures:
             for num_hash, num_projection in zip(num_hashes, num_projections):
@@ -239,7 +239,7 @@ def main():
 
         print('All experiments are done!')
 
-    elapsed_time = time.time() - start
+    elapsed_time = time.perf_counter() - start
     print(f"Total elapsed time: {elapsed_time} seconds")
     print('All experiments are done!')
 
