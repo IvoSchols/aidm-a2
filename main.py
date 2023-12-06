@@ -22,13 +22,12 @@ def parse_args():
 
     # Tunable
     argparser.add_argument("-n_hashes", default=100, type=int, help="number of hash functions to be used (only for jaccard&max 100)")
-    argparser.add_argument("-n_projections", default=100, type=int, help="number of projections to be used")
     argparser.add_argument("-n_bands", default=5, type=int, help="number of bands to be used")
 
     args = argparser.parse_args()
 
     # TODO: remove
-    # args.m = 'cs'
+    args.m = 'cs'
 
     if args.m != 'js' and args.m != 'cs' and args.m != 'dcs':
         raise Exception("Unknown similarity measure")
@@ -138,7 +137,7 @@ def lsh_jaccard(signature_matrix : np.ndarray, n_bands : int):
 # and then bin the users into buckets based on their hash
 #   - cosine_similarity > 0.73
 #   - discrete_cosine_similarity > 0.73
-# @profile
+@profile
 def lsh_cosine(projected_matrix, n_bands, similarity_measure):
     n_users, n_projections = projected_matrix.shape
 
@@ -165,11 +164,14 @@ def lsh_cosine(projected_matrix, n_bands, similarity_measure):
             # Iterate through each pair of users in the bucket
             for user1, user2 in combinations(user_bucket, 2):
                 user1_vec = projected_matrix[user1]
-                unit_user1_vec = user1_vec / np.linalg.norm(user1_vec)
                 user2_vec = projected_matrix[user2]
-                unit_user2_vec = user2_vec / np.linalg.norm(user2_vec)
+
+                norm_user1 = np.linalg.norm(user1_vec)
+                norm_user2 = np.linalg.norm(user2_vec)
+
+                cosine = np.dot(user1_vec, user2_vec) / (norm_user1 * norm_user2)
                 
-                theta = np.arccos(np.dot(unit_user1_vec, unit_user2_vec))
+                theta = np.arccos(cosine)
                 similarity = 1 - theta/180
 
                 if similarity > 0.73:
@@ -177,7 +179,7 @@ def lsh_cosine(projected_matrix, n_bands, similarity_measure):
         
         append_result(similar_users, f"{similarity_measure}.txt")
 
-
+# @profile
 def main():
     args = parse_args()
     directory = args.d
@@ -198,8 +200,8 @@ def main():
     if similarity_measure == 'js':
         signature_matrix = minhash_jaccard(rating_matrix, n_hashes)
     elif similarity_measure == 'cs' or similarity_measure == 'dcs':
-        projection_matrix = SparseRandomProjection(n_components=n_hashes, random_state=seed, dense_output=True)
-        projected_matrix = projection_matrix.fit_transform(rating_matrix) # Project the rating matrix onto a lower dimensional space
+        projection_matrix = SparseRandomProjection(n_components=n_hashes, random_state=seed)
+        projected_matrix = projection_matrix.fit_transform(rating_matrix).toarray() # Project the rating matrix onto a lower dimensional space
         del projection_matrix # free memory
 
     del rating_matrix # free memory

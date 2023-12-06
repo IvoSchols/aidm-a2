@@ -5,39 +5,12 @@ from scipy import sparse
 import argparse
 from sklearn.random_projection import SparseRandomProjection
 from itertools import combinations
+import os
+import subprocess
+import multiprocessing
+from time import perf_counter
 
 
-###
-# Parsing Args, Reading & Writing Data
-###
-
-def parse_args():
-    argparser = argparse.ArgumentParser()
-    # argparser.add_argument("-d", default="data/user_movie_rating_subset.npy", help="specify data file path")
-    
-    # Mandatory
-    argparser.add_argument("-d", default="data/user_movie_rating.npy", help="specify data file path")
-    argparser.add_argument("-s", default=42, type=int, help="the random seed to be used")
-    argparser.add_argument("-m", choices = ['js','cs','dcs'], help="similarity measure: jacard (js), cosine (cs), discrete cosine (dcs)")
-
-    # Tunable
-    argparser.add_argument("-n_hashes", default=100, type=int, help="number of hash functions to be used (only for jaccard&max 100)")
-    argparser.add_argument("-n_projections", default=100, type=int, help="number of projections to be used")
-    argparser.add_argument("-n_bands", default=5, type=int, help="number of bands to be used")
-    
-    # Experiment
-    argparser.add_argument("-file_name", default="results", help="name of the file to write the results to")
-
-    args = argparser.parse_args()
-
-    # TODO: remove
-    # args.m = 'cs'
-
-    if args.m != 'js' and args.m != 'cs' and args.m != 'dcs':
-        raise Exception("Unknown similarity measure")
-
-
-    return args
 
 # Load data from file, return a sparse matrix of shape (movies, users)
 def load_data(file_path : str, similarity_measure : str):
@@ -168,11 +141,14 @@ def lsh_cosine(projected_matrix, n_bands, similarity_measure, file_name):
             # Iterate through each pair of users in the bucket
             for user1, user2 in combinations(user_bucket, 2):
                 user1_vec = projected_matrix[user1]
-                unit_user1_vec = user1_vec / np.linalg.norm(user1_vec)
                 user2_vec = projected_matrix[user2]
-                unit_user2_vec = user2_vec / np.linalg.norm(user2_vec)
+
+                norm_user1 = np.linalg.norm(user1_vec)
+                norm_user2 = np.linalg.norm(user2_vec)
+
+                cosine = np.dot(user1_vec, user2_vec) / (norm_user1 * norm_user2)
                 
-                theta = np.arccos(np.dot(unit_user1_vec, unit_user2_vec))
+                theta = np.arccos(cosine)
                 similarity = 1 - theta/180
 
                 if similarity > 0.73:
@@ -181,28 +157,17 @@ def lsh_cosine(projected_matrix, n_bands, similarity_measure, file_name):
         append_result(similar_users, f"{file_name}.txt")
 
 
-def main():
-    args = parse_args()
-    directory = args.d
-    seed = args.s
-    similarity_measure = args.m
-    n_hashes = args.n_hashes # Used for minhash and for the number of projections
-    n_bands = args.n_bands
-    file_name = args.file_name
-
+def run_experiment(data, similarity_measure, num_hash, num_band, seed, timeout):
+    print(f'Running experiment with measure = {similarity_measure}, num_hash = {num_hash}, num_band = {num_band}, seed = {seed}')
     np.random.seed(seed)
+    file_name = f'{similarity_measure}_{num_hash}_{num_band}_{seed}'
 
-
-    # Start timer
-    start = time.time()
-
-    # Load data
-    rating_matrix = load_data(directory, similarity_measure)
-
+    start = perf_counter()
+ 
     if similarity_measure == 'js':
-        signature_matrix = minhash_jaccard(rating_matrix, n_hashes)
+        signature_matrix = minhash_jaccard(rating_matrix, num_hash)
     elif similarity_measure == 'cs' or similarity_measure == 'dcs':
-        projection_matrix = SparseRandomProjection(n_components=n_hashes, random_state=seed, dense_output=True)
+        projection_matrix = SparseRandomProjection(n_components=num_hash, random_state=seed, dense_output=True)
         projected_matrix = projection_matrix.fit_transform(rating_matrix) # Project the rating matrix onto a lower dimensional space
         del projection_matrix # free memory
 
@@ -213,9 +178,60 @@ def main():
 
     # Compute LSH
     if similarity_measure == 'js':
-        lsh_jaccard(signature_matrix, n_bands, file_name)
+        lsh_jaccard(signature_matrix, num_band, file_name)
     elif similarity_measure == 'cs' or similarity_measure == 'dcs':
-        lsh_cosine(projected_matrix, n_bands, similarity_measure, file_name)
+        lsh_cosine(projected_matrix, num_band, similarity_measure, file_name)
+
+
+    execution_time = perf_counter() - start
+
+    # Append execution time to results file.
+    with open(f'{file_name}.txt', 'a') as f:
+        f.write(f'{execution_time}\n')
+
+    print(f'Done with experiment: {file_name}')
+
+def main():
+
+    # Arguments that will be passed to main.py.
+    measures = ['js', 'cs', 'dcs']
+    num_hashes = [100, 120, 150]
+    num_projections = [750, 1500, 3000]
+    num_bands = [20, 10, 5]
+    seeds = [19, 42, 47]
+    timeout = 30 * 60
+
+    # Start timer
+    start = time.time()
+
+    # Load data
+    rating_matrix_js = load_data('data/user_movie_rating.npy', 'js')
+    rating_matrix_cs = load_data('data/user_movie_rating.npy', 'cs')
+    rating_matrix_dcs = load_data('data/user_movie_rating.npy', 'dcs') 
+
+    # Create a pool of workers
+    with multiprocessing.Pool(2) as pool:
+        jobs = []
+        for measure in measures:
+            for num_hash, num_projection in zip(num_hashes, num_projections):
+                for num_band in num_bands:
+                    for seed in seeds:
+                        if measure == 'js':
+                            job = pool.apply_async(run_experiment, rating_matrix_js, measure, num_hash, num_band, seed, timeout)
+                        elif measure == 'cs':
+                            job = pool.apply_async(run_experiment, rating_matrix_cs, measure, num_projection, num_band, seed, timeout)
+                        elif measure == 'dcs':
+                            job = pool.apply_async(run_experiment, rating_matrix_dcs, measure, num_projection, num_band, seed, timeout)
+                        jobs.append(job)
+
+        # Wait for all jobs to complete
+        pool.close()
+        pool.join()
+
+        # Collect results
+        results = [job.get() for job in jobs if job.get() is not None]
+
+    print('All experiments are done!')
 
     # Stop timer
     end = time.time()
