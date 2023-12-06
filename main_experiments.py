@@ -1,5 +1,6 @@
 from collections import defaultdict
 import time
+from timeit import Timer
 import numpy as np
 from scipy import sparse
 import argparse
@@ -162,7 +163,7 @@ def run_experiment(rating_matrix, similarity_measure, num_hash, num_band, seed, 
     file_name = f'{similarity_measure}_{num_hash}_{num_band}_{seed}'
 
     # Start timer
-    start = perf_counter()
+    start = time.time()
  
     if similarity_measure == 'js':
         signature_matrix = minhash_jaccard(rating_matrix, num_hash)
@@ -173,7 +174,7 @@ def run_experiment(rating_matrix, similarity_measure, num_hash, num_band, seed, 
 
     del rating_matrix # free memory
     # Stop timer
-    stop = perf_counter()
+    stop = time.time()
     print("Time elapsed for minhash/projection matrix: ", stop - start)
 
     # Compute LSH
@@ -183,7 +184,7 @@ def run_experiment(rating_matrix, similarity_measure, num_hash, num_band, seed, 
         lsh_cosine(projected_matrix, num_band, similarity_measure, file_name)
 
 
-    execution_time = perf_counter() - start
+    execution_time = time.time() - start
 
     # Append execution time to results file.
     with open(f'{file_name}.txt', 'a') as f:
