@@ -21,12 +21,13 @@ def run_experiments():
 
     # Similarity measure
     measures = ['-m' ,'js', 'cs', 'dcs']
+    # measures = ['-m' ,'cs']
 
     # N_hashes to test.
     num_hashes = ['-n_hashes', 100, 120, 150]
 
     # Number of bands to test.
-    num_bands = ['-n_bands', 25, 50, 100]
+    num_bands = ['-n_bands', 20, 10, 5] # Increasing number of bands increases the number of false positives. (and runtime)
     # Seeds to test.
     seeds = ['-s', 19, 42, 47]
     
@@ -56,7 +57,10 @@ def run_experiments():
                             cmd.append(arg)
                         # Run main.py.
                         start = perf_counter()
-                        subprocess.run(cmd, timeout=timeout)
+                        try:
+                            subprocess.run(cmd, timeout=timeout)
+                        except subprocess.TimeoutExpired:
+                            print('Timeout expired. Continuing with next experiment.')
                         execution_time = perf_counter() - start
 
                         # Append execution time to results file.

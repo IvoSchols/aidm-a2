@@ -24,6 +24,9 @@ def parse_args():
     argparser.add_argument("-n_hashes", default=100, type=int, help="number of hash functions to be used (only for jaccard&max 100)")
     argparser.add_argument("-n_projections", default=100, type=int, help="number of projections to be used")
     argparser.add_argument("-n_bands", default=5, type=int, help="number of bands to be used")
+    
+    # Experiment
+    argparser.add_argument("-file_name", default="results", help="name of the file to write the results to")
 
     args = argparser.parse_args()
 
@@ -97,7 +100,7 @@ def minhash_jaccard(rating_matrix, n_hashes : int):
 # Divide the signature matrix into n_bands bands and n_rows rows per band
 # If two users are similar, that is:
 #   - jaccard_similarity > 0.5
-def lsh_jaccard(signature_matrix : np.ndarray, n_bands : int):
+def lsh_jaccard(signature_matrix : np.ndarray, n_bands : int, file_name : str):
     n_hashes, _ = signature_matrix.shape
     rows_per_band = n_hashes // n_bands
 
@@ -130,7 +133,7 @@ def lsh_jaccard(signature_matrix : np.ndarray, n_bands : int):
                 if similarity > 0.5:
                     similar_users.append((user1,user2))
 
-        append_result(similar_users, "js.txt")
+        append_result(similar_users, f"{file_name}.txt")
 
 
 # Return candidate pairs of shape (n_candidate_pairs, 2) by applying LSH to the given projected matrix (users, movies)
@@ -139,7 +142,7 @@ def lsh_jaccard(signature_matrix : np.ndarray, n_bands : int):
 #   - cosine_similarity > 0.73
 #   - discrete_cosine_similarity > 0.73
 # @profile
-def lsh_cosine(projected_matrix, n_bands, similarity_measure):
+def lsh_cosine(projected_matrix, n_bands, similarity_measure, file_name):
     n_users, n_projections = projected_matrix.shape
 
     columns_per_band = n_projections // n_bands
@@ -175,7 +178,7 @@ def lsh_cosine(projected_matrix, n_bands, similarity_measure):
                 if similarity > 0.73:
                     similar_users.append((user1, user2))
         
-        append_result(similar_users, f"{similarity_measure}.txt")
+        append_result(similar_users, f"{file_name}.txt")
 
 
 def main():
@@ -185,6 +188,7 @@ def main():
     similarity_measure = args.m
     n_hashes = args.n_hashes # Used for minhash and for the number of projections
     n_bands = args.n_bands
+    file_name = args.file_name
 
     np.random.seed(seed)
 
@@ -209,9 +213,9 @@ def main():
 
     # Compute LSH
     if similarity_measure == 'js':
-        lsh_jaccard(signature_matrix, n_bands)
+        lsh_jaccard(signature_matrix, n_bands, file_name)
     elif similarity_measure == 'cs' or similarity_measure == 'dcs':
-        lsh_cosine(projected_matrix, n_bands, similarity_measure)
+        lsh_cosine(projected_matrix, n_bands, similarity_measure, file_name)
 
     # Stop timer
     end = time.time()
