@@ -210,7 +210,7 @@ def main():
     rating_matrix_dcs = load_data('data/user_movie_rating.npy', 'dcs') 
 
     # Run experiments in parallel
-    with concurrent.futures.ProcessPoolExecutor(max_workers=41) as executor:
+    with concurrent.futures.ProcessPoolExecutor(max_workers=81) as executor:
         futures = []
 
         # Submit all jobs to the pool
