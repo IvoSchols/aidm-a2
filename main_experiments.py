@@ -217,11 +217,11 @@ def main():
                 for num_band in num_bands:
                     for seed in seeds:
                         if measure == 'js':
-                            job = pool.apply_async(run_experiment, (rating_matrix_js, measure, num_hash, num_band, seed), callback=run_experiment_callback)
+                            job = pool.apply_async(run_experiment, (rating_matrix_js, measure, num_hash, num_band, seed))
                         elif measure == 'cs':
-                            job = pool.apply_async(run_experiment, (rating_matrix_cs, measure, num_projection, num_band, seed), callback=run_experiment_callback)
+                            job = pool.apply_async(run_experiment, (rating_matrix_cs, measure, num_projection, num_band, seed))
                         elif measure == 'dcs':
-                            job = pool.apply_async(run_experiment, (rating_matrix_dcs, measure, num_projection, num_band, seed), callback=run_experiment_callback)
+                            job = pool.apply_async(run_experiment, (rating_matrix_dcs, measure, num_projection, num_band, seed))
                         
                         jobs.append(job)
 
@@ -234,7 +234,7 @@ def main():
                 job.get(timeout=timeout)
             except TimeoutError:
                 print("Experiment timed out!")
-
+                job.terminate()
                 continue 
 
         print('All experiments are done!')
