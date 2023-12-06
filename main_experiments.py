@@ -209,9 +209,8 @@ def main():
     rating_matrix_cs = load_data('data/user_movie_rating.npy', 'cs')
     rating_matrix_dcs = load_data('data/user_movie_rating.npy', 'dcs') 
 
-
     # Run experiments in parallel
-    with concurrent.futures.ProcessPoolExecutor(max_workers=81) as executor:
+    with concurrent.futures.ProcessPoolExecutor(max_workers=41) as executor:
         futures = []
 
         # Submit all jobs to the pool
@@ -230,17 +229,16 @@ def main():
         # Wait for all jobs to finish or until the timeout is reached
         start_time = time.time()
         try:
-            for f in concurrent.futures.as_completed(futures):
+            for f in concurrent.futures.as_completed(futures, timeout=timeout):
                 f.result()
         except concurrent.futures.TimeoutError:
             print("Execution exceeded the timeout. Cancelling all jobs.")
             for f in futures:
                 f.cancel()
 
-
-        elapsed_time = time.time() - start_time
-        print(f"Total elapsed time: {elapsed_time} seconds")
-        print('All experiments are done!')
+    elapsed_time = time.time() - start_time
+    print(f"Total elapsed time: {elapsed_time} seconds")
+    print('All experiments are done!')
 
 
 if __name__ == "__main__":
