@@ -139,21 +139,22 @@ def lsh_cosine(projected_matrix, n_bands, similarity_measure, file_name):
         similar_users = list()
 
         for user_bucket in bucket_users_dict.values():
-            # Iterate through each pair of users in the bucket
-            for user1, user2 in combinations(user_bucket, 2):
-                user1_vec = projected_matrix[user1]
-                user2_vec = projected_matrix[user2]
+            # Calculate the similarity matrix for the users x users in the bucket
+            user_vectors = projected_matrix[user_bucket]
+            norms = np.linalg.norm(user_vectors, axis=1, keepdims=True)
+            cosine_similarity_matrix = np.dot(user_vectors, user_vectors.T) / (norms * norms.T)
+            thetas = np.arccos(cosine_similarity_matrix)
+            similarities = 1 - thetas/180
 
-                norm_user1 = np.linalg.norm(user1_vec)
-                norm_user2 = np.linalg.norm(user2_vec)
+            # Filter out the diagonal and lower triangle of the similarity matrix since it is symmetric and we want u1<u2
+            lower_triangle_mask = np.tri(similarities.shape[0], dtype=bool)
+            similarities[lower_triangle_mask] = 0
+            
+            # Find indices of similar user pairs
+            similar_user_indices = np.where(similarities > 0.73)
+            similar_user_pairs = list(zip(user_bucket[similar_user_indices[0]], user_bucket[similar_user_indices[1]]))
 
-                cosine = np.dot(user1_vec, user2_vec) / (norm_user1 * norm_user2)
-                
-                theta = np.arccos(cosine)
-                similarity = 1 - theta/180
-
-                if similarity > 0.73:
-                    similar_users.append((user1, user2))
+            similar_users.extend(similar_user_pairs)
         
         append_result(similar_users, f"{file_name}.txt")
 

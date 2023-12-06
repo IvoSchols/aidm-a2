@@ -1,5 +1,4 @@
 from collections import defaultdict
-import time
 import numpy as np
 from scipy import sparse
 import argparse
@@ -13,8 +12,6 @@ from itertools import combinations
 
 def parse_args():
     argparser = argparse.ArgumentParser()
-    # argparser.add_argument("-d", default="data/user_movie_rating_subset.npy", help="specify data file path")
-    
     # Mandatory
     argparser.add_argument("-d", default="data/user_movie_rating.npy", help="specify data file path")
     argparser.add_argument("-s", default=42, type=int, help="the random seed to be used")
@@ -26,8 +23,9 @@ def parse_args():
 
     args = argparser.parse_args()
 
-    # TODO: remove
+    #Todo: remove
     args.m = 'cs'
+    # args.n_hashes = 3000
 
     if args.m != 'js' and args.m != 'cs' and args.m != 'dcs':
         raise Exception("Unknown similarity measure")
@@ -132,7 +130,7 @@ def lsh_jaccard(signature_matrix : np.ndarray, n_bands : int):
         append_result(similar_users, "js.txt")
 
 
-# Return candidate pairs of shape (n_candidate_pairs, 2) by applying LSH to the given projected matrix (users, movies)
+# Return candidate pairs of shape (n_candidate_pairs, 2) by applying LSH to the given projected matrix (n_users, n_projections)
 # We use random projection to reduce the dimensionality of the rating matrix
 # and then bin the users into buckets based on their hash
 #   - cosine_similarity > 0.73
@@ -161,21 +159,22 @@ def lsh_cosine(projected_matrix, n_bands, similarity_measure):
         similar_users = list()
 
         for user_bucket in bucket_users_dict.values():
-            # Iterate through each pair of users in the bucket
-            for user1, user2 in combinations(user_bucket, 2):
-                user1_vec = projected_matrix[user1]
-                user2_vec = projected_matrix[user2]
+            # Calculate the similarity matrix for the users x users in the bucket
+            user_vectors = projected_matrix[user_bucket]
+            norms = np.linalg.norm(user_vectors, axis=1, keepdims=True)
+            cosine_similarity_matrix = np.dot(user_vectors, user_vectors.T) / (norms * norms.T)
+            thetas = np.arccos(cosine_similarity_matrix)
+            similarities = 1 - thetas/180
 
-                norm_user1 = np.linalg.norm(user1_vec)
-                norm_user2 = np.linalg.norm(user2_vec)
+            # Filter out the diagonal and lower triangle of the similarity matrix since it is symmetric and we want u1<u2
+            lower_triangle_mask = np.tri(similarities.shape[0], dtype=bool)
+            similarities[lower_triangle_mask] = 0
+            
+            # Find indices of similar user pairs
+            similar_user_indices = np.where(similarities > 0.73)
+            similar_user_pairs = list(zip(user_bucket[similar_user_indices[0]], user_bucket[similar_user_indices[1]]))
 
-                cosine = np.dot(user1_vec, user2_vec) / (norm_user1 * norm_user2)
-                
-                theta = np.arccos(cosine)
-                similarity = 1 - theta/180
-
-                if similarity > 0.73:
-                    similar_users.append((user1, user2))
+            similar_users.extend(similar_user_pairs)
         
         append_result(similar_users, f"{similarity_measure}.txt")
 
@@ -190,34 +189,19 @@ def main():
 
     np.random.seed(seed)
 
-
-    # Start timer
-    start = time.time()
-
     # Load data
     rating_matrix = load_data(directory, similarity_measure)
 
     if similarity_measure == 'js':
         signature_matrix = minhash_jaccard(rating_matrix, n_hashes)
+        del rating_matrix # free memory
+        lsh_jaccard(signature_matrix, n_bands)
     elif similarity_measure == 'cs' or similarity_measure == 'dcs':
         projection_matrix = SparseRandomProjection(n_components=n_hashes, random_state=seed)
         projected_matrix = projection_matrix.fit_transform(rating_matrix).toarray() # Project the rating matrix onto a lower dimensional space
-        del projection_matrix # free memory
-
-    del rating_matrix # free memory
-    # Stop timer
-    stop = time.time()
-    print("Time elapsed for minhash/projection matrix: ", stop - start)
-
-    # Compute LSH
-    if similarity_measure == 'js':
-        lsh_jaccard(signature_matrix, n_bands)
-    elif similarity_measure == 'cs' or similarity_measure == 'dcs':
+        del projection_matrix
+        del rating_matrix
         lsh_cosine(projected_matrix, n_bands, similarity_measure)
-
-    # Stop timer
-    end = time.time()
-    print("Total time elapsed: ", end - start)
 
 if __name__ == "__main__":
     main()
