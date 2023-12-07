@@ -6,7 +6,7 @@ from scipy import sparse
 from sklearn.random_projection import SparseRandomProjection
 from itertools import combinations
 from time import perf_counter
-
+import ray
 
 
 # Load data from file, return a sparse matrix of shape (movies, users)
@@ -154,6 +154,7 @@ def lsh_cosine(projected_matrix, n_bands, similarity_measure, file_name):
     
         append_result(similar_user_pairs, f"{file_name}.txt")
 
+@ray.remote
 def run_experiment(rating_matrix, similarity_measure, num_hash, num_band, seed):
     print(f'Running experiment with measure = {similarity_measure}, num_hash = {num_hash}, num_band = {num_band}, seed = {seed}')
     np.random.seed(seed)
@@ -190,7 +191,8 @@ def run_experiment(rating_matrix, similarity_measure, num_hash, num_band, seed):
     print(f'Done with experiment: {file_name}')
 
 def main():
-
+    num_cpus = 3
+    ray.init(num_cpus=num_cpus)
     # Arguments that will be passed to main.py.
     measures = ['js', 'cs', 'dcs']
     num_hashes = [100, 120, 150]
@@ -206,39 +208,30 @@ def main():
     rating_matrix_cs = load_data('data/user_movie_rating.npy', 'cs')
     rating_matrix_dcs = load_data('data/user_movie_rating.npy', 'dcs') 
 
-    # Create a pool of workers
-    with multiprocessing.Pool(32) as pool:
-        jobs = []
-        for measure in measures:
-            for num_hash in num_hashes:
-                for num_band in num_bands:
-                    for seed in seeds:
-                        if measure == 'js':
-                            job = pool.apply_async(run_experiment, (rating_matrix_js, measure, num_hash, num_band, seed))
-                        elif measure == 'cs':
-                            job = pool.apply_async(run_experiment, (rating_matrix_cs, measure, num_hash, num_band, seed))
-                        elif measure == 'dcs':
-                            job = pool.apply_async(run_experiment, (rating_matrix_dcs, measure, num_hash, num_band, seed))
-                        
-                        jobs.append(job)
 
-        # Wait for all jobs to complete with a timeout
-        pool.close()
-        pool.join()
+    tasks = []
+    for measure in measures:
+        for num_hash in num_hashes:
+            for num_band in num_bands:
+                for seed in seeds:
+                    if measure == 'js':
+                        rating_matrix = rating_matrix_js
+                    elif measure == 'cs':
+                        rating_matrix = rating_matrix_cs
+                    elif measure == 'dcs':
+                        rating_matrix = rating_matrix_dcs
+                    task = run_experiment.remote(rating_matrix, measure, num_hash, num_band, seed)
+                    tasks.append(task)
 
-        for job in jobs:
-            try:
-                job.get(timeout=timeout)
-            except TimeoutError:
-                print("Experiment timed out!")
-                job.terminate()
-                continue 
+    # Use ray.get to fetch results as soon as they are ready
+    results = ray.get(tasks)
 
-        print('All experiments are done!')
+    print('All experiments are done!')
 
     elapsed_time = time.perf_counter() - start
     print(f"Total elapsed time: {elapsed_time} seconds")
-    print('All experiments are done!')
+    
+    ray.shutdown()
 
 
 if __name__ == "__main__":
