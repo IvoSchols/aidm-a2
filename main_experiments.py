@@ -114,9 +114,12 @@ def lsh_jaccard(signature_matrix : np.ndarray, n_bands : int, file_name : str):
 # @profile
 def lsh_cosine(projected_matrix, n_bands, similarity_measure, file_name):
     n_users, n_projections = projected_matrix.shape
-    bucket_count = n_users // 3
+    bucket_count = n_users // 2
 
     columns_per_band = n_projections // n_bands
+
+    user_buckets = list()
+
     # Divide the hashed vectors into n_bands bands and n_rows rows per band
     for band in range(n_bands):
         #Extract a band from the projected matrix
@@ -131,28 +134,28 @@ def lsh_cosine(projected_matrix, n_bands, similarity_measure, file_name):
         buckets, bucket_indices = np.unique(dest_bucket, return_inverse=True)
         bucket_users_dict = defaultdict(list)
         for bucket_index in range(len(buckets)):
-            bucket_users_dict[bucket_index] = np.argwhere(bucket_indices == bucket_index).flatten()
+            user_buckets.append(np.argwhere(bucket_indices == bucket_index).flatten())
 
-        similar_users = list()
 
-        for user_bucket in bucket_users_dict.values():
-            # Calculate the similarity matrix for the users x users in the bucket
-            user_vectors = projected_matrix[user_bucket]
-            norms = np.linalg.norm(user_vectors, axis=1, keepdims=True)
-            cosine_similarity_matrix = np.dot(user_vectors, user_vectors.T) / (norms * norms.T)
-            thetas = np.arccos(cosine_similarity_matrix)
-            similarities = 1 - thetas/180
+    # Apply LSH to find candidate pairs
+    for user_bucket in user_buckets:
+        # Calculate the similarity matrix for the users x users in the bucket
+        user_vectors = projected_matrix[user_bucket]
+        norms = np.linalg.norm(user_vectors, axis=1, keepdims=True)
+        cosine_similarity_matrix = np.dot(user_vectors, user_vectors.T) / (norms * norms.T)
+        thetas = np.arccos(cosine_similarity_matrix)
+        similarities = 1 - thetas/180
 
-            # Filter out the diagonal and lower triangle of the similarity matrix since it is symmetric and we want u1<u2
-            lower_triangle_mask = np.tri(similarities.shape[0], dtype=bool)
-            similarities[lower_triangle_mask] = 0
-            
-            # Find indices of similar user pairs
-            similar_user_indices = np.where(similarities > 0.73)
-            similar_user_pairs = np.column_stack((user_bucket[similar_user_indices[0]], user_bucket[similar_user_indices[1]])).tolist()
-            similar_users.extend(similar_user_pairs)
+        # Filter out the diagonal and lower triangle of the similarity matrix since it is symmetric and we want u1<u2
+        lower_triangle_mask = np.tri(similarities.shape[0], dtype=bool)
+        similarities[lower_triangle_mask] = 0
         
-        append_result(similar_users, f"{file_name}.txt")
+        # Find indices of similar user pairs
+        similar_user_indices = np.where(similarities > 0.73)
+        similar_user_pairs = np.column_stack((user_bucket[similar_user_indices[0]], user_bucket[similar_user_indices[1]])).tolist()
+    
+        
+        append_result(similar_user_pairs, f"{file_name}.txt")
 
 def run_experiment(rating_matrix, similarity_measure, num_hash, num_band, seed):
     print(f'Running experiment with measure = {similarity_measure}, num_hash = {num_hash}, num_band = {num_band}, seed = {seed}')
