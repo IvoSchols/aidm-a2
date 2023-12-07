@@ -143,18 +143,15 @@ def lsh_cosine(projected_matrix, n_bands, similarity_measure, file_name):
         user_vectors = projected_matrix[user_bucket]
         norms = np.linalg.norm(user_vectors, axis=1, keepdims=True)
         cosine_similarity_matrix = np.dot(user_vectors, user_vectors.T) / (norms * norms.T)
-        thetas = np.arccos(cosine_similarity_matrix)
-        similarities = 1 - thetas/180
 
         # Filter out the diagonal and lower triangle of the similarity matrix since it is symmetric and we want u1<u2
-        lower_triangle_mask = np.tri(similarities.shape[0], dtype=bool)
-        similarities[lower_triangle_mask] = 0
+        lower_triangle_mask = np.tri(cosine_similarity_matrix.shape[0], dtype=bool)
+        cosine_similarity_matrix[lower_triangle_mask] = 0
         
         # Find indices of similar user pairs
-        similar_user_indices = np.where(similarities > 0.73)
+        similar_user_indices = np.where(cosine_similarity_matrix > 0.73)
         similar_user_pairs = np.column_stack((user_bucket[similar_user_indices[0]], user_bucket[similar_user_indices[1]])).tolist()
     
-        
         append_result(similar_user_pairs, f"{file_name}.txt")
 
 def run_experiment(rating_matrix, similarity_measure, num_hash, num_band, seed):
