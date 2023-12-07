@@ -215,16 +215,18 @@ def main():
             for num_band in num_bands:
                 for seed in seeds:
                     if measure == 'js':
-                        rating_matrix = rating_matrix_js
+                        task = run_experiment.remote(rating_matrix_js, measure, num_hash, num_band, seed)
                     elif measure == 'cs':
-                        rating_matrix = rating_matrix_cs
+                        task = run_experiment.remote(rating_matrix_cs, measure, num_hash, num_band, seed)
                     elif measure == 'dcs':
-                        rating_matrix = rating_matrix_dcs
-                    task = run_experiment.remote(rating_matrix, measure, num_hash, num_band, seed)
+                        task = run_experiment.remote(rating_matrix_dcs, measure, num_hash, num_band, seed)
                     tasks.append(task)
 
-    # Use ray.get to fetch results as soon as they are ready
-    results = ray.get(tasks)
+    # Wait for all tasks to finish or until the timeout is reached
+    ready_tasks, _ = ray.wait(tasks, timeout=timeout)
+
+    # Use ray.get to fetch results for completed tasks
+    results = ray.get(ready_tasks)
 
     print('All experiments are done!')
 
