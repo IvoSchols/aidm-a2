@@ -52,19 +52,27 @@ for root, dirs, files in os.walk('results'):
         # Read number of found pairs from file.
         with open(f'{root}/{file}', 'r') as f:
             lines = f.readlines()
-            execution_time_data.append(float(lines[-1]))
-            found_pairs_data.append(len(lines) - 1)
+            # found_pairs_data.append(len(lines) - 1)
+            execution_time = lines[-1]
+            # Check if executione time contains a comma
+            if ',' in execution_time:
+                found_pairs_data.append(len(lines))
+                execution_time_data.append(timeout)
+            else:
+                found_pairs_data.append(len(lines) - 1)
+                execution_time_data.append(float(lines[-1]))
 
 
 # Create a DataFrame
+similarity_measure_string = 'Similarity measure, (number of hashes, number of bands)'
 df = pd.DataFrame({
-    'Similarity measure, number of hashes/projections, number of bands': combined_data,
+    similarity_measure_string: combined_data,
     'Execution time': execution_time_data,
     'Number of found pairs': found_pairs_data,
     'Seed': seed_data
 })
 
-unique_values = df['Similarity measure, number of hashes/projections, number of bands'].unique()
+unique_values = df[similarity_measure_string].unique()
 unique_values.sort()
 
 
@@ -73,14 +81,14 @@ plt.figure(figsize=(14, 6))
 
 # Plot Execution Time
 plt.subplot(1, 2, 1)
-sns.barplot(x='Similarity measure, number of hashes/projections, number of bands',
+sns.barplot(x=similarity_measure_string,
             y='Execution time', hue='Seed', data=df, palette='muted', order=unique_values)
 plt.title('Execution Time')
 plt.xticks(rotation=45, ha='right')
 
 # Plot Number of Found Pairs
 plt.subplot(1, 2, 2)
-sns.barplot(x='Similarity measure, number of hashes/projections, number of bands',
+sns.barplot(x=similarity_measure_string,
             y='Number of found pairs', hue='Seed', data=df, palette='muted', order=unique_values)
 plt.title('Number of Found Pairs')
 plt.xticks(rotation=45, ha='right')

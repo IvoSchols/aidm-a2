@@ -1,13 +1,10 @@
 from collections import defaultdict
 import multiprocessing
 import time
-from timeit import Timer
 import numpy as np
 from scipy import sparse
-import argparse
 from sklearn.random_projection import SparseRandomProjection
 from itertools import combinations
-import concurrent.futures
 from time import perf_counter
 
 
@@ -117,6 +114,7 @@ def lsh_jaccard(signature_matrix : np.ndarray, n_bands : int, file_name : str):
 # @profile
 def lsh_cosine(projected_matrix, n_bands, similarity_measure, file_name):
     n_users, n_projections = projected_matrix.shape
+    bucket_count = n_users // 3
 
     columns_per_band = n_projections // n_bands
     # Divide the hashed vectors into n_bands bands and n_rows rows per band
@@ -125,9 +123,9 @@ def lsh_cosine(projected_matrix, n_bands, similarity_measure, file_name):
         band_matrix = projected_matrix[:, band * columns_per_band: (band + 1) * columns_per_band]
 
         # Hash the band matrix
-        hashed_band_matrix = np.sign(band_matrix)
+        hashed_band_matrix = np.sum(band_matrix, axis=1).astype(int)
         # Collapse the columns of the band into a single value for each user and calculate its destination bucket
-        dest_bucket = np.sum(hashed_band_matrix, axis=1).astype(int)
+        dest_bucket = hashed_band_matrix % bucket_count
 
         # Find unique buckets and map each user to its bucket
         buckets, bucket_indices = np.unique(dest_bucket, return_inverse=True)
@@ -196,7 +194,6 @@ def main():
     # Arguments that will be passed to main.py.
     measures = ['js', 'cs', 'dcs']
     num_hashes = [100, 120, 150]
-    num_projections = [750, 1500, 3000]
     num_bands = [20, 10, 5]
     seeds = [19, 42, 47]
     timeout = 30 * 60
@@ -210,18 +207,18 @@ def main():
     rating_matrix_dcs = load_data('data/user_movie_rating.npy', 'dcs') 
 
     # Create a pool of workers
-    with multiprocessing.Pool(100) as pool:
+    with multiprocessing.Pool(32) as pool:
         jobs = []
         for measure in measures:
-            for num_hash, num_projection in zip(num_hashes, num_projections):
+            for num_hash in num_hashes:
                 for num_band in num_bands:
                     for seed in seeds:
                         if measure == 'js':
                             job = pool.apply_async(run_experiment, (rating_matrix_js, measure, num_hash, num_band, seed))
                         elif measure == 'cs':
-                            job = pool.apply_async(run_experiment, (rating_matrix_cs, measure, num_projection, num_band, seed))
+                            job = pool.apply_async(run_experiment, (rating_matrix_cs, measure, num_hash, num_band, seed))
                         elif measure == 'dcs':
-                            job = pool.apply_async(run_experiment, (rating_matrix_dcs, measure, num_projection, num_band, seed))
+                            job = pool.apply_async(run_experiment, (rating_matrix_dcs, measure, num_hash, num_band, seed))
                         
                         jobs.append(job)
 

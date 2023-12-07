@@ -135,9 +135,10 @@ def lsh_jaccard(signature_matrix : np.ndarray, n_bands : int):
 # and then bin the users into buckets based on their hash
 #   - cosine_similarity > 0.73
 #   - discrete_cosine_similarity > 0.73
-@profile
+# @profile
 def lsh_cosine(projected_matrix, n_bands, similarity_measure):
     n_users, n_projections = projected_matrix.shape
+    bucket_count = n_users // 2
 
     columns_per_band = n_projections // n_bands
     # Divide the hashed vectors into n_bands bands and n_rows rows per band
@@ -146,9 +147,9 @@ def lsh_cosine(projected_matrix, n_bands, similarity_measure):
         band_matrix = projected_matrix[:, band * columns_per_band: (band + 1) * columns_per_band]
 
         # Hash the band matrix
-        hashed_band_matrix = np.sign(band_matrix)
+        hashed_band_matrix = np.sum(band_matrix, axis=1).astype(int)
         # Collapse the columns of the band into a single value for each user and calculate its destination bucket
-        dest_bucket = np.sum(hashed_band_matrix, axis=1).astype(int)
+        dest_bucket = hashed_band_matrix % bucket_count
 
         # Find unique buckets and map each user to its bucket
         buckets, bucket_indices = np.unique(dest_bucket, return_inverse=True)
