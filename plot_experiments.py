@@ -16,8 +16,8 @@ num_bands = ['Number of bands', 20, 10, 5] # Increasing number of bands increase
 # Seeds tested
 seeds = ['Seeds', 19, 42, 47]
 
-# Timeout in seconds.
-timeout = 30 * 60
+# Timeout in seconds. (60*60 = 1 hour)
+timeout = 60*60
 
 # Throw error if no results folder is found.
 if not os.path.exists('results'):
@@ -64,7 +64,7 @@ for root, dirs, files in os.walk('results'):
 
 
 # Create a DataFrame
-similarity_measure_string = 'Similarity measure, (number of hashes, number of bands)'
+similarity_measure_string = 'Similarity measure, (number of hashes/projections, number of bands)'
 df = pd.DataFrame({
     similarity_measure_string: combined_data,
     'Execution time': execution_time_data,
@@ -76,20 +76,71 @@ unique_values = df[similarity_measure_string].unique()
 unique_values.sort()
 
 
+## Figure 1: Execution time and number of found pairs for different number of similairty measure, hashes/projections and bands.
+# Plot Execution Time
+# sns.barplot(x=similarity_measure_string,
+#             y='Execution time', hue='Seed', data=df, palette='muted', order=unique_values)
+# plt.title('Execution Time')
+# plt.xticks(rotation=45, ha='right')
+
+# plt.tight_layout()
+# plt.show()
+
+# # Plot Number of Found Pairs
+# sns.barplot(x=similarity_measure_string,
+#             y='Number of found pairs', hue='Seed', data=df, palette='muted', order=unique_values)
+# plt.title('Number of Found Pairs')
+# plt.xticks(rotation=45, ha='right')
+
+# plt.tight_layout()
+# plt.show()
+
+## Figure 2: Execution time and number of found pairs for different number of similairty measure, hashes/projections and bands within timeout
+# unique_values = df[df['Execution time'] < timeout][similarity_measure_string].unique()
+# unique_values.sort()
+# # Create a figure with subplots
+# plt.figure(figsize=(14, 6))
+
+# # Plot Execution Time
+# plt.subplot(1, 2, 1)
+# sns.barplot(x=similarity_measure_string,
+#             y='Execution time', hue='Seed', data=df[df['Execution time'] < timeout], palette='muted', order=unique_values)
+# plt.title('Execution Time')
+# plt.xticks(rotation=45, ha='right')
+
+# # Plot Number of Found Pairs
+# plt.subplot(1, 2, 2)
+# sns.barplot(x=similarity_measure_string,
+#             y='Number of found pairs', hue='Seed', data=df[df['Execution time'] < timeout], palette='muted', order=unique_values)
+# plt.title('Number of Found Pairs')
+# plt.xticks(rotation=45, ha='right')
+
+# # Adjust layout
+# plt.tight_layout()
+
+# # Show the plot
+# plt.show()
+
+## Figure 3: Execution time and number of found pairs for jaccard similarity measure with hashes/projections and bands within timeout
+# Test if similarty measure string contains 'js'
+unique_values = df[df['Execution time'] < timeout][df[similarity_measure_string].str.contains('js')][similarity_measure_string].unique()
+unique_values.sort()
+
 # Create a figure with subplots
 plt.figure(figsize=(14, 6))
 
 # Plot Execution Time
 plt.subplot(1, 2, 1)
+
 sns.barplot(x=similarity_measure_string,
-            y='Execution time', hue='Seed', data=df, palette='muted', order=unique_values)
+            y='Execution time', hue='Seed', data=df[df['Execution time'] < timeout][df[similarity_measure_string].str.contains('js')], palette='muted', order=unique_values)
 plt.title('Execution Time')
 plt.xticks(rotation=45, ha='right')
 
 # Plot Number of Found Pairs
 plt.subplot(1, 2, 2)
 sns.barplot(x=similarity_measure_string,
-            y='Number of found pairs', hue='Seed', data=df, palette='muted', order=unique_values)
+            y='Number of found pairs', hue='Seed', data=df[df['Execution time'] < timeout][df[similarity_measure_string].str.contains('js')], palette='muted', order=unique_values)
 plt.title('Number of Found Pairs')
 plt.xticks(rotation=45, ha='right')
 
@@ -98,3 +149,4 @@ plt.tight_layout()
 
 # Show the plot
 plt.show()
+

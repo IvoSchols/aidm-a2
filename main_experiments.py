@@ -222,11 +222,8 @@ def main():
                         task = run_experiment.remote(rating_matrix_dcs, measure, num_hash, num_band, seed)
                     tasks.append(task)
 
-    # Wait for all tasks to finish or until the timeout is reached
-    ready_tasks, _ = ray.wait(tasks, timeout=timeout)
 
-    # Use ray.get to fetch results for completed tasks
-    results = ray.get(ready_tasks)
+    results = ray.get(tasks)
 
     print('All experiments are done!')
 

@@ -1,4 +1,5 @@
 from collections import defaultdict
+import time
 import numpy as np
 from scipy import sparse
 import argparse
@@ -14,21 +15,42 @@ def parse_args():
     argparser = argparse.ArgumentParser()
     # Mandatory
     argparser.add_argument("-d", default="data/user_movie_rating.npy", help="specify data file path")
-    argparser.add_argument("-s", default=42, type=int, help="the random seed to be used")
+    argparser.add_argument("-s", type=int, help="the random seed to be used")
     argparser.add_argument("-m", choices = ['js','cs','dcs'], help="similarity measure: jacard (js), cosine (cs), discrete cosine (dcs)")
 
     # Tunable
-    argparser.add_argument("-n_hashes", default=100, type=int, help="number of hash functions to be used (only for jaccard&max 100)")
-    argparser.add_argument("-n_bands", default=5, type=int, help="number of bands to be used")
+    argparser.add_argument("-n_hashes", type=int, help="number of hash functions to be used (only for jaccard&max 100)")
+    argparser.add_argument("-n_bands", type=int, help="number of bands to be used")
 
     args = argparser.parse_args()
 
-    #Todo: remove
-    args.m = 'cs'
-    # args.n_hashes = 750
-
     if args.m != 'js' and args.m != 'cs' and args.m != 'dcs':
         raise Exception("Unknown similarity measure")
+
+    # Set default values
+    if args.m == 'js':
+        if args.n_hashes is None:
+            args.n_hashes = 100
+        if args.n_bands is None:
+            args.n_bands = 10
+        if args.s is None:
+            args.s = 47
+    elif args.m == 'cs':
+        if args.n_hashes is None:
+            args.n_hashes = 100
+        if args.n_bands is None:
+            args.n_bands = 10
+        if args.s is None:
+            args.s = 42
+    elif args.m == 'dcs':
+        if args.n_hashes is None:
+            args.n_hashes = 100
+        if args.n_bands is None:
+            args.n_bands = 5
+        if args.s is None:
+            args.s = 42
+
+
 
 
     return args
@@ -98,7 +120,9 @@ def lsh_jaccard(signature_matrix : np.ndarray, n_bands : int):
     n_hashes, _ = signature_matrix.shape
     rows_per_band = n_hashes // n_bands
 
-    # Apply LSH to find candidate pairs
+    user_buckets = list()
+
+    # Build buckets by mapping users to buckets
     for band in range(n_bands):
         # Extract a band from the signature matrix
         band_matrix = signature_matrix[band * rows_per_band: (band + 1) * rows_per_band, :]
@@ -108,24 +132,26 @@ def lsh_jaccard(signature_matrix : np.ndarray, n_bands : int):
 
         # Find unique buckets and map each user to its bucket
         buckets, bucket_indices = np.unique(dest_bucket, return_inverse=True)
-        bucket_users_dict = defaultdict(list)
         for bucket_index in range(len(buckets)):
-            bucket_users_dict[bucket_index] = np.argwhere(bucket_indices == bucket_index).flatten()
+            user_buckets.append(np.argwhere(bucket_indices == bucket_index).flatten())
 
+    # Sort buckets by size
+    user_buckets.sort(key=len, reverse=True)
+
+    # Find similar users in each bucket and append them to the result file
+    for user_bucket in user_buckets:
         similar_users = list()
+        # Iterate through each pair of users in the bucket
+        for user1, user2 in combinations(user_bucket, 2):
+            user1_sig = signature_matrix[:, user1]
+            user2_sig = signature_matrix[:, user2]
 
-        for user_bucket in bucket_users_dict.values():
-            # Iterate through each pair of users in the bucket
-            for user1, user2 in combinations(user_bucket, 2):
-                user1_sig = signature_matrix[:, user1]
-                user2_sig = signature_matrix[:, user2]
-
-                # Add pair to the set if above the threshold -> calculation is done inline for performance reasons
-                intersection_size = np.sum(user1_sig & user2_sig)
-                union_size = np.sum(user1_sig | user2_sig)
-                similarity = intersection_size / union_size
-                if similarity > 0.5:
-                    similar_users.append((user1,user2))
+            # Add pair to the set if above the threshold -> calculation is done inline for performance reasons
+            intersection_size = np.sum(user1_sig & user2_sig)
+            union_size = np.sum(user1_sig | user2_sig)
+            similarity = intersection_size / union_size
+            if similarity > 0.5:
+                similar_users.append((user1,user2))
 
         append_result(similar_users, "js.txt")
 
@@ -189,6 +215,8 @@ def main():
 
     np.random.seed(seed)
 
+    start = time.perf_counter()
+
     # Load data
     rating_matrix = load_data(directory, similarity_measure)
 
@@ -203,6 +231,10 @@ def main():
         del projection_matrix
         del rating_matrix
         lsh_cosine(projected_matrix, n_bands, similarity_measure)
+
+    stop = time.perf_counter()
+
+    print(f"Execution time: {stop - start:0.4f} seconds")
 
 if __name__ == "__main__":
     main()
